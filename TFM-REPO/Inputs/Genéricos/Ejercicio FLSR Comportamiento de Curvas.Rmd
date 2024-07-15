@@ -1,0 +1,1779 @@
+---
+title: "FLSR_html_exercise"
+author: "Alberto Couce"
+date: "2024-03-18"
+output:
+  html_document:
+    number_sections: yes
+    toc: yes
+    toc_float: yes
+  pdf_document:
+    number_sections: yes
+    toc: yes
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+Cargado de librerias
+
+```{r message=FALSE, warning=FALSE}
+# Librerias
+library(FLCore)
+library(ggplotFL)
+library(FLBRP)
+library(viridis)
+library(gridExtra)
+library(dplyr)
+library(cowplot)
+```
+
+Cargado de datos
+
+```{r}
+setwd("~/Tito CDS/MTE/TFM IEO/Case Studies")
+dir<-getwd()
+dir_RData<-paste0(dir, "/data/hake.RData") # Sustituir por dir_RData<-paste0(dir, "/data/wgbie2023_shake8c9a_FLRobjs_estimated.RData")
+load(dir_RData)
+
+```
+
+Preparado de datos
+
+```{r}
+# Cortamos los datos
+recy <- 1982:2022 
+stk<-window(stk, recy[1], recy[length(recy)])
+
+# Creamos objeto FLSR
+hake <-as.FLSR(stk)
+
+# Vector de incrementos
+
+incrementos <-seq(0.70,1.30,0.10)
+```
+
+# Ajuste de modelos
+
+Preparamos y ajustamos los modelos de Beverton-Holt y Ricker
+
+```{r include=FALSE}
+# Ajustamos para ricker
+model(hake) <- ricker()
+hake_ric<-fmle(hake)
+
+```
+
+```{r}
+summary(hake_ric)
+```
+
+```{r,include=FALSE}
+# Cambiamos  y ajustamos modelo a bevholt
+model(hake) <- bevholt()
+hake_bh<-fmle(hake)
+```
+
+```{r}
+summary(hake_bh)
+```
+
+## Análisis de sensibilidad para los parámetros a y b de Beverton-Holt
+
+### Rango de gráfico y visualización del Ajuste
+
+```{r}
+Max<-max((ssb(hake_bh)))*1.1
+ssb_range <- seq( 0, Max, length.out = 10000)
+
+a<-as.numeric(hake_bh@params[1])
+b<-as.numeric(hake_bh@params[2])
+
+
+rec_range <- ( ssb_range * a) / ( ssb_range + b)
+
+
+plot( ssb_range, rec_range, type='l', col='black', ylim=c(0,max(rec( hake_bh))),xlim=c(0,max(ssb(hake_bh))))
+points( an(ssb(hake_bh)), an(rec( hake_bh)))
+
+```
+
+### Engadir asíntotas para a e b.
+
+### Análisis de sensibilidad para el modelo de Beverton-Holt
+
+### Análisis sobre el parámetro a
+
+```{r}
+
+
+# Crea una matriz para almacenar los resultados
+resultados_bha <- matrix(nrow = length(ssb_range), ncol = length(incrementos))
+
+# Función Sobre a
+
+# Itera sobre los diferentes incrementos
+for (i in 1:length(incrementos)) {
+  # Multiplica cada valor de ssb_range por el incremento correspondiente
+  resultados_bha[, i] <- (ssb_range * (a*incrementos[i])) / (ssb_range + b)
+}
+
+# Plotea las curvas para cada valor de incremento
+plot(ssb_range, resultados_bha[, 1], type = 'l', col = 'red', 
+     ylim = c(0, max(resultados_bha)), xlim = c(0, Max), 
+     xlab = 'Spawning Stock Biomass', ylab = 'Recruitment')
+     
+# Agrega las curvas adicionales al mismo gráfico
+for (i in 2:length(incrementos)) {
+  lines(ssb_range, resultados_bha[, i], col = viridis(length(incrementos))[i])
+}
+# Añade una leyenda
+legend('bottomright', legend = incrementos, col = viridis(length(incrementos)), lty = 1, title = 'Incrementos',cex=0.55)
+
+```
+
+Vemos que a hace referencia al reclutamiento asintótico, y su comportamiento al aumentar o disminuir.
+
+### Análisis sobre el parámetro b
+
+```{r}
+# Crea una matriz para almacenar los resultados
+resultados_bhb <- matrix(nrow = length(ssb_range), ncol = length(incrementos))
+
+# Itera sobre los diferentes incrementos
+for (i in 1:length(incrementos)) {
+  # Multiplica cada valor de ssb_range por el incremento correspondiente
+  resultados_bhb[, i] <- (ssb_range * a) / (ssb_range + (b*incrementos[i]))
+}
+
+# Plotea las curvas para cada valor de incremento
+plot(ssb_range, resultados_bhb[, 1], type = 'l', col = 'red', 
+     ylim = c(0, max(resultados_bhb)), xlim = c(0, Max), 
+     xlab = 'Spawning Stock Biomass', ylab = 'Recruitment')
+     
+     
+# Agrega las curvas adicionales al mismo gráfico
+for (i in 2:length(incrementos)) {
+  lines(ssb_range, resultados_bhb[, i], col = viridis(length(incrementos))[i])
+}
+
+# Añade una leyenda
+legend('bottomright', legend = incrementos, col = viridis(length(incrementos)), lty = 1, title = 'Incrementos',cex=0.55)
+```
+
+### Eliminar las observaciones
+
+## Análisis de sensibilidad para los parámetros a y b de Ricker
+
+### Rango de gráfico y visualización del Ajuste
+
+```{r}
+Max<-max((ssb(hake_ric)))+1.1
+ssb_range <- seq( 0, Max, length.out = 10000)
+# 'bevholt'
+a<-as.numeric(hake_ric@params[1])
+b<-as.numeric(hake_ric@params[2])
+
+rec_range <- a * ssb_range * exp(-b * ssb_range)
+
+
+plot( ssb_range, rec_range, type='l', col='black', ylim=c(0,max(rec( hake_ric))),xlim=c(0,max(ssb(hake_ric))))
+points( an(ssb(hake_ric)), an(rec( hake_ric)))
+```
+
+### Análisis de sensibilidad para el modelo de Ricker
+
+### Análisis sobre el parámetro a
+
+```{r}
+# Crea una matriz para almacenar los resultados
+resultados_rica <- matrix(nrow = length(ssb_range), ncol = length(incrementos))
+
+# Función Sobre a
+
+# Itera sobre los diferentes incrementos
+for (i in 1:length(incrementos)) {
+  # Multiplica cada valor de ssb_range por el incremento correspondiente
+  resultados_rica[, i] <- (ssb_range * (a*incrementos[i])) * exp(-b*ssb_range)
+}
+
+# Plotea las curvas para cada valor de incremento
+plot(ssb_range, resultados_rica[, 1], type = 'l', col = 'red', 
+     ylim = c(0, max(resultados_rica)), xlim = c(0, Max), 
+     xlab = 'Spawning Stock Biomass', ylab = 'Recruitment')
+
+# Agrega las curvas adicionales al mismo gráfico
+for (i in 2:length(incrementos)) {
+  lines(ssb_range, resultados_rica[,i], col = viridis(length(incrementos))[i])
+}
+# Añade una leyenda
+legend('bottomright', legend = incrementos, col = viridis(length(incrementos)), lty = 1, title = 'Incrementos',cex=0.55)
+
+```
+
+*En este caso en Ricker es el parámetro a el que modifica la pendiente en el origen* Ligado a la capacidad de resistencia. Añadir razonamiento de resultados
+
+### Análisis sobre el parámetro b
+
+```{r}
+# Crea una matriz para almacenar los resultados
+resultados_ricb <- matrix(nrow = length(ssb_range), ncol = length(incrementos))
+
+# Función Sobre b
+
+# Itera sobre los diferentes incrementos
+for (i in 1:length(incrementos)) {
+  # Multiplica cada valor de ssb_range por el incremento correspondiente
+  resultados_ricb[, i] <- (ssb_range * a * exp((-b*incrementos[i])*ssb_range))
+}
+
+# Plotea las curvas para cada valor de incremento
+plot(ssb_range, resultados_ricb[, 1], type = 'l', col = 'red', 
+     ylim = c(0, max(resultados_ricb)), xlim = c(0, Max), 
+     xlab = 'Spawning Stock Biomass', ylab = 'Recruitment')
+# Agrega las curvas adicionales al mismo gráfico
+for (i in 2:length(incrementos)) {
+  lines(ssb_range, resultados_ricb[, i], col = viridis(length(incrementos))[i])
+  
+}
+
+# Añade una leyenda
+legend('bottomright', legend = incrementos, col = viridis(length(incrementos)), lty = 1, title = 'Incrementos',cex=0.55)
+
+```
+
+Es importante destacar que los comportamientos que modifican los parámetros a y b difieren entre ambos ajustes (con estas parametrizaciones específicas).
+
+En el modelo de Ricker, el parámetro a modifica la pendiente en el orige mientras que el parámetro b modifica el peso con el cual cae el reclutamiento a medida que aumenta la biomasa del stock.
+
+Por otro lado, en el modelo de Beverton-Holt, es el parámetro b el que determina el valor de la pendiente en el origen mientras que le parámetro a indica la altura a la cuál se sitúa la asíntota a la que tiende el valor de reclutamiento.
+
+## Cálculo de RPs (Reference Points)
+
+### RPs para nuestro modelo de Ricker
+
+```{r}
+RPs_ric<-brp( FLBRP(stk, sr = hake_ric))
+RPs_ric@refpts
+plot(RPs_ric)
+```
+
+### RPs para nuestro modelo de Beverton-Holt
+
+```{r}
+RPs_bh<-brp(FLBRP(stk, sr = hake_bh))
+RPs_bh@refpts
+plot(RPs_bh)
+```
+
+Son los reclutas que necesitas generar para reemplazar a los que se han ido pescando. En el caso extremo *Línea de reemplazamiento* la pendiente en el origen coincide con FCrash.
+
+Virgen MsY crash
+
+## Glosario
+
+*FCrash* es el nivel de F que llevará a la acción a la extinción.
+
+*F0.1* es un proxy para FMSY y es la mortalidad por pesca que corresponde a un punto en la curva de rendimiento por recluta donde la pendiente es el 10% de la del origen.
+
+*FMax* es F que devuelve el máximo rendimiento por recluta.
+
+*MEY y FMEY* *MEY* representa el rendimiento económico máximo, *FMEY* corresponde al nivel de explotación que proporciona el máximo beneficio. El beneficio se obtiene como la diferencia entre los ingresos (rendimiento multiplicado por precios) y los costos (costo por unidad de F multiplicado por el nivel de explotación).
+
+*MSY y FMSY* *MSY* representa el rendimiento máximo sostenible, *FMSY* corresponde al nivel de explotación que proporciona el máximo rendimiento, derivado de una curva de rendimiento que incluye una relación de reclutamiento de la población.
+
+*SPR0* es la producción por recluta en biomasa virgen.
+
+*SPR30* corresponde al punto en la curva donde SPR es el 30% de SPR0. En estos casos, los valores de biomasa, ssb y rendimiento se derivan multiplicando los valores por recluta por el reclutamiento promedio.
+
+*virgen* representa la biomasa virgen sin explotación.
+
+# Análisis Comparativo
+
+```{r}
+#Creación del data frame para las curvas de interés.
+df_ric<- model.frame(metrics(RPs_ric,list(ssb=ssb,harvest=fbar, rec=rec, yield=landings,profit=profit)),drop=FALSE)
+df_ric
+
+df_bh<- model.frame(metrics(RPs_bh,list(ssb=ssb,harvest=fbar, rec=rec, yield=landings,profit=profit)),drop=FALSE)
+df_bh
+```
+
+```{r}
+plot(df_bh$harvest,df_bh$ssb, type="l") 
+
+plot(df_bh$harvest,df_bh$yield, type="l")
+
+plot(df_bh$ssb,df_bh$yield, type="l")
+
+plot(df_bh$ssb, df_bh$rec, type="l")
+```
+
+### Data frames para el análisis de sensibilidad
+
+#### Beverton-Holt
+
+##### Parámetro a (Disminución del 30%)
+
+```{r,include=FALSE}
+#Reseteamos modelo original
+
+model(hake) <- bevholt()
+hake_bh<-fmle(hake)
+
+# Disminución do 30%
+
+hake_bh@params[1]<-hake_bh@params[1]*0.70
+RPs_bh_a070<-brp(FLBRP(stk, sr = hake_bh))
+summary(RPs_bh_a070@refpts)
+
+```
+
+```{r}
+plot(RPs_bh_a070)
+```
+
+```{r}
+# Creación del Dataframe
+
+#Creación del data frame para las curvas de interés.
+df_bh_a70<- model.frame(metrics(RPs_bh_a070,list(ssb=ssb,harvest=fbar, rec=rec, yield=landings,profit=profit)),drop=FALSE)
+summary(df_bh_a70)
+```
+
+##### Parámetro a (Aumento del 30%)
+
+```{r,include=FALSE}
+#Reseteamos modelo original
+
+model(hake) <- bevholt()
+hake_bh<-fmle(hake)
+
+# Aumento do 30%
+hake_bh@params[1]<-hake_bh@params[1]*1.30
+RPs_bh_a130<-brp(FLBRP(stk, sr = hake_bh))
+summary(RPs_bh_a130@refpts)
+
+```
+
+```{r}
+plot(RPs_bh_a130)
+```
+
+```{r}
+# Creación del Dataframe
+
+#Creación del data frame para las curvas de interés.
+df_bh_a130<- model.frame(metrics(RPs_bh_a130,list(ssb=ssb,harvest=fbar, rec=rec, yield=landings,profit=profit)),drop=FALSE)
+summary(df_bh_a130)
+```
+
+##### Parámetro b (Disminución del 30%)
+
+```{r,include=FALSE}
+#Reseteamos modelo original
+
+model(hake) <- bevholt()
+hake_bh<-fmle(hake)
+
+# Disminución do 30%
+
+hake_bh@params[2]<-hake_bh@params[2]*0.70
+RPs_bh_b070<-brp(FLBRP(stk, sr = hake_bh))
+summary(RPs_bh_b070@refpts)
+
+```
+
+```{r}
+plot(RPs_bh_b070)
+```
+
+```{r}
+# Creación del Dataframe
+
+#Creación del data frame para las curvas de interés.
+df_bh_b70<- model.frame(metrics(RPs_bh_b070,list(ssb=ssb,harvest=fbar, rec=rec, yield=landings,profit=profit)),drop=FALSE)
+summary(df_bh_b70)
+```
+
+##### Parámetro b (Aumento del 30%)
+
+```{r,include=FALSE}
+#Reseteamos modelo original
+
+model(hake) <- bevholt()
+hake_bh<-fmle(hake)
+
+# Disminución do 30%
+
+hake_bh@params[2]<-hake_bh@params[2]*1.30
+RPs_bh_b130<-brp(FLBRP(stk, sr = hake_bh))
+summary(RPs_bh_b130@refpts)
+
+```
+
+```{r}
+plot(RPs_bh_b130)
+```
+
+```{r}
+# Creación del Dataframe
+
+#Creación del data frame para las curvas de interés.
+df_bh_b130<- model.frame(metrics(RPs_bh_b130,list(ssb=ssb,harvest=fbar, rec=rec, yield=landings,profit=profit)),drop=FALSE)
+summary(df_bh_b130)
+```
+
+#### Ricker
+
+##### Parámetro a (Disminución del 30%)
+
+```{r,include=FALSE}
+#Reseteamos modelo original
+
+model(hake) <- ricker()
+hake_ric<-fmle(hake)
+
+# Disminución do 30%
+
+hake_ric@params[1]<-hake_ric@params[1]*0.70
+RPs_ric_a070<-brp(FLBRP(stk, sr = hake_ric))
+summary(RPs_ric_a070@refpts)
+
+```
+
+```{r}
+plot(RPs_ric_a070)
+```
+
+```{r}
+# Creación del Dataframe
+
+#Creación del data frame para las curvas de interés.
+df_ric_a70<- model.frame(metrics(RPs_ric_a070,list(ssb=ssb,harvest=fbar, rec=rec, yield=landings,profit=profit)),drop=FALSE)
+summary(df_ric_a70)
+```
+
+##### Parámetro a (Aumento del 30%)
+
+```{r,include=FALSE}
+#Reseteamos modelo original
+
+model(hake) <- ricker()
+hake_ric<-fmle(hake)
+
+# Aumento do 30%
+hake_ric@params[1]<-hake_ric@params[1]*1.30
+RPs_ric_a130<-brp(FLBRP(stk, sr = hake_ric))
+summary(RPs_ric_a130@refpts)
+
+```
+
+```{r}
+plot(RPs_ric_a130)
+```
+
+```{r}
+# Creación del Dataframe
+
+#Creación del data frame para las curvas de interés.
+df_ric_a130<- model.frame(metrics(RPs_ric_a130,list(ssb=ssb,harvest=fbar, rec=rec, yield=landings,profit=profit)),drop=FALSE)
+summary(df_ric_a130)
+```
+
+##### Parámetro b (Disminución del 30%)
+
+```{r,include=FALSE}
+#Reseteamos modelo original
+
+model(hake) <- ricker()
+hake_ric<-fmle(hake)
+
+# Disminución do 30%
+
+hake_ric@params[2]<-hake_ric@params[2]*0.70
+RPs_ric_b070<-brp(FLBRP(stk, sr = hake_ric))
+summary(RPs_ric_b070@refpts)
+
+```
+
+```{r}
+plot(RPs_ric_b070)
+```
+
+```{r}
+# Creación del Dataframe
+
+#Creación del data frame para las curvas de interés.
+df_ric_b70<- model.frame(metrics(RPs_ric_b070,list(ssb=ssb,harvest=fbar, rec=rec, yield=landings,profit=profit)),drop=FALSE)
+summary(df_ric_b70)
+```
+
+##### Parámetro b (Aumento del 30%)
+
+```{r,include=FALSE}
+#Reseteamos modelo original
+
+model(hake) <- ricker()
+hake_ric<-fmle(hake)
+
+# Disminución do 30%
+
+hake_ric@params[2]<-hake_ric@params[2]*1.30
+RPs_ric_b130<-brp(FLBRP(stk, sr = hake_ric))
+summary(RPs_ric_b130@refpts)
+
+```
+
+```{r}
+plot(RPs_ric_b130)
+```
+
+```{r}
+# Creación del Dataframe
+
+#Creación del data frame para las curvas de interés.
+df_ric_b130<- model.frame(metrics(RPs_ric_b130,list(ssb=ssb,harvest=fbar, rec=rec, yield=landings,profit=profit)),drop=FALSE)
+summary(df_ric_b130)
+```
+### Visualizaciones comparativas 
+#### Creacion de data frames para ggplot2
+
+##### BH data.frames
+
+```{r}
+# plot(df$harvest,df$ssb, type="l") 
+BH.df.harvest.ssb.a<-cbind(df_bh$harvest,df_bh$ssb,df_bh_a70$harvest,df_bh_a70$ssb,df_bh_a130$harvest,df_bh_a130$ssb)
+BH.df.harvest.ssb.b<-cbind(df_bh$harvest,df_bh$ssb,df_bh_b70$harvest,df_bh_b70$ssb,df_bh_b130$harvest,df_bh_b130$ssb)
+# plot(df$harvest,df$yield, type="l")
+BH.df.harvest.yield.a<-cbind(df_bh$harvest,df_bh$yield,df_bh_a70$harvest,df_bh_a70$yield,df_bh_a130$harvest,df_bh_a130$yield)
+BH.df.harvest.yield.b<-cbind(df_bh$harvest,df_bh$yield,df_bh_b70$harvest,df_bh_b70$yield,df_bh_b130$harvest,df_bh_b130$yield)
+# plot(df$ssb,df$yield, type="l")
+BH.df.ssb.yield.a<-cbind(df_bh$ssb,df_bh$yield,df_bh_a70$ssb,df_bh_a70$yield,df_bh_a130$ssb,df_bh_a130$yield)
+BH.df.ssb.yield.b<-cbind(df_bh$ssb,df_bh$yield,df_bh_b70$ssb,df_bh_b70$yield,df_bh_b130$ssb,df_bh_b130$yield)
+# plot(df$ssb, df$rec, type="l")
+BH.df.ssb.rec.a<-cbind(df_bh$ssb,df_bh$rec,df_bh_a70$ssb,df_bh_a70$rec,df_bh_a130$ssb,df_bh_a130$rec)
+BH.df.ssb.rec.b<-cbind(df_bh$ssb,df_bh$rec,df_bh_b70$ssb,df_bh_b70$rec,df_bh_b130$ssb,df_bh_b130$rec)
+```
+
+
+##### RIC data.frames
+```{r}
+# plot(df$harvest,df$ssb, type="l") 
+RIC.df.harvest.ssb.a<-cbind(df_ric$harvest,df_ric$ssb,df_ric_a70$harvest,df_ric_a70$ssb,df_ric_a130$harvest,df_ric_a130$ssb)
+RIC.df.harvest.ssb.b<-cbind(df_ric$harvest,df_ric$ssb,df_ric_b70$harvest,df_ric_b70$ssb,df_ric_b130$harvest,df_ric_b130$ssb)
+# plot(df$harvest,df$yield, type="l")
+RIC.df.harvest.yield.a<-cbind(df_ric$harvest,df_ric$yield,df_ric_a70$harvest,df_ric_a70$yield,df_ric_a130$harvest,df_ric_a130$yield)
+RIC.df.harvest.yield.b<-cbind(df_ric$harvest,df_ric$yield,df_ric_b70$harvest,df_ric_b70$yield,df_ric_b130$harvest,df_ric_b130$yield)
+# plot(df$ssb,df$yield, type="l")
+RIC.df.ssb.yield.a<-cbind(df_ric$ssb,df_ric$yield,df_ric_a70$ssb,df_ric_a70$yield,df_ric_a130$ssb,df_ric_a130$yield)
+RIC.df.ssb.yield.b<-cbind(df_ric$ssb,df_ric$yield,df_ric_b70$ssb,df_ric_b70$yield,df_ric_b130$ssb,df_ric_b130$yield)
+# plot(df$ssb, df$rec, type="l")
+RIC.df.ssb.rec.a<-cbind(df_ric$ssb,df_ric$rec,df_ric_a70$ssb,df_ric_a70$rec,df_ric_a130$ssb,df_ric_a130$rec)
+RIC.df.ssb.rec.b<-cbind(df_ric$ssb,df_ric$rec,df_ric_b70$ssb,df_ric_b70$rec,df_ric_b130$ssb,df_ric_b130$rec)
+```
+
+
+```{r}
+# Convertir las matrices combinadas en dataframes
+BH.df.harvest.ssb.a <- as.data.frame(BH.df.harvest.ssb.a)
+BH.df.harvest.ssb.b <- as.data.frame(BH.df.harvest.ssb.b)
+BH.df.harvest.yield.a <- as.data.frame(BH.df.harvest.yield.a)
+BH.df.harvest.yield.b <- as.data.frame(BH.df.harvest.yield.b)
+BH.df.ssb.yield.a <- as.data.frame(BH.df.ssb.yield.a)
+BH.df.ssb.yield.b <- as.data.frame(BH.df.ssb.yield.b)
+BH.df.ssb.rec.a <- as.data.frame(BH.df.ssb.rec.a)
+BH.df.ssb.rec.b <- as.data.frame(BH.df.ssb.rec.b)
+
+RIC.df.harvest.ssb.a <- as.data.frame(RIC.df.harvest.ssb.a)
+RIC.df.harvest.ssb.b <- as.data.frame(RIC.df.harvest.ssb.b)
+RIC.df.harvest.yield.a <- as.data.frame(RIC.df.harvest.yield.a)
+RIC.df.harvest.yield.b <- as.data.frame(RIC.df.harvest.yield.b)
+RIC.df.ssb.yield.a <- as.data.frame(RIC.df.ssb.yield.a)
+RIC.df.ssb.yield.b <- as.data.frame(RIC.df.ssb.yield.b)
+RIC.df.ssb.rec.a <- as.data.frame(RIC.df.ssb.rec.a)
+RIC.df.ssb.rec.b <- as.data.frame(RIC.df.ssb.rec.b)
+
+```
+
+### Gráficos
+
+```{r}
+#Fijamos colores
+
+# Definir los colores personalizados
+colores <- c("Base" = "black", "a * 0.70" = "orange", "a * 1.30" = "red", "b * 0.70" = "green", "b * 1.30" = "blue")
+```
+
+#### SSB vs Fbar
+
+```{r}
+### RICKER
+# RICKER Base
+
+harvest_ric_x_virgin=RPs_ric@refpts$virgin[1,1]
+harvest_ric_x_virgin=as.numeric(harvest_ric_x_virgin)
+ssb_ric_y_virgin=RPs_ric@refpts$virgin[1,4]
+ssb_ric_y_virgin=as.numeric(ssb_ric_y_virgin)
+
+harvest_ric_x_msy=RPs_ric@refpts$msy[1,1]
+harvest_ric_x_msy=as.numeric(harvest_ric_x_msy)
+ssb_ric_y_msy=RPs_ric@refpts$msy[1,4]
+ssb_ric_y_msy=as.numeric(ssb_ric_y_msy)
+
+
+harvest_ric_x_crash=RPs_ric@refpts$crash[1,1]
+harvest_ric_x_crash=as.numeric(harvest_ric_x_crash)
+ssb_ric_y_crash=RPs_ric@refpts$crash[1,4]
+ssb_ric_y_crash=as.numeric(ssb_ric_y_crash)
+
+
+# RICKER Parametro a 70%
+
+harvest_ric_x_virgin_a070=RPs_ric_a070@refpts$virgin[1,1]
+harvest_ric_x_virgin_a070=as.numeric(harvest_ric_x_virgin_a070)
+ssb_ric_y_virgin_a070=RPs_ric_a070@refpts$virgin[1,4]
+ssb_ric_y_virgin_a070=as.numeric(ssb_ric_y_virgin_a070)
+
+harvest_ric_x_msy_a070=RPs_ric_a070@refpts$msy[1,1]
+harvest_ric_x_msy_a070=as.numeric(harvest_ric_x_msy_a070)
+ssb_ric_y_msy_a070=RPs_ric_a070@refpts$msy[1,4]
+ssb_ric_y_msy_a070=as.numeric(ssb_ric_y_msy_a070)
+
+
+harvest_ric_x_crash_a070=RPs_ric_a070@refpts$crash[1,1]
+harvest_ric_x_crash_a070=as.numeric(harvest_ric_x_crash_a070)
+ssb_ric_y_crash_a070=RPs_ric_a070@refpts$crash[1,4]
+ssb_ric_y_crash_a070=as.numeric(ssb_ric_y_crash_a070)
+
+# RICKER Parametro a 130%
+
+harvest_ric_x_virgin_a130=RPs_ric_a130@refpts$virgin[1,1]
+harvest_ric_x_virgin_a130=as.numeric(harvest_ric_x_virgin_a130)
+ssb_ric_y_virgin_a130=RPs_ric_a130@refpts$virgin[1,4]
+ssb_ric_y_virgin_a130=as.numeric(ssb_ric_y_virgin_a130)
+
+harvest_ric_x_msy_a130=RPs_ric_a130@refpts$msy[1,1]
+harvest_ric_x_msy_a130=as.numeric(harvest_ric_x_msy_a130)
+ssb_ric_y_msy_a130=RPs_ric_a130@refpts$msy[1,4]
+ssb_ric_y_msy_a130=as.numeric(ssb_ric_y_msy_a130)
+
+
+harvest_ric_x_crash_a130=RPs_ric_a130@refpts$crash[1,1]
+harvest_ric_x_crash_a130=as.numeric(harvest_ric_x_crash_a130)
+ssb_ric_y_crash_a130=RPs_ric_a130@refpts$crash[1,4]
+ssb_ric_y_crash_a130=as.numeric(ssb_ric_y_crash_a130)
+
+# RICKER Parametro b 70%
+
+harvest_ric_x_virgin_b070=RPs_ric_b070@refpts$virgin[1,1]
+harvest_ric_x_virgin_b070=as.numeric(harvest_ric_x_virgin_b070)
+ssb_ric_y_virgin_b070=RPs_ric_b070@refpts$virgin[1,4]
+ssb_ric_y_virgin_b070=as.numeric(ssb_ric_y_virgin_b070)
+
+harvest_ric_x_msy_b070=RPs_ric_b070@refpts$msy[1,1]
+harvest_ric_x_msy_b070=as.numeric(harvest_ric_x_msy_b070)
+ssb_ric_y_msy_b070=RPs_ric_b070@refpts$msy[1,4]
+ssb_ric_y_msy_b070=as.numeric(ssb_ric_y_msy_b070)
+
+
+harvest_ric_x_crash_b070=RPs_ric_b070@refpts$crash[1,1]
+harvest_ric_x_crash_b070=as.numeric(harvest_ric_x_crash_b070)
+ssb_ric_y_crash_b070=RPs_ric_b070@refpts$crash[1,4]
+ssb_ric_y_crash_b070=as.numeric(ssb_ric_y_crash_b070)
+
+# RICKER Parametro b 130%
+
+harvest_ric_x_virgin_b130=RPs_ric_b130@refpts$virgin[1,1]
+harvest_ric_x_virgin_b130=as.numeric(harvest_ric_x_virgin_b130)
+ssb_ric_y_virgin_b130=RPs_ric_b130@refpts$virgin[1,4]
+ssb_ric_y_virgin_b130=as.numeric(ssb_ric_y_virgin_b130)
+
+harvest_ric_x_msy_b130=RPs_ric_b130@refpts$msy[1,1]
+harvest_ric_x_msy_b130=as.numeric(harvest_ric_x_msy_b130)
+ssb_ric_y_msy_b130=RPs_ric_b130@refpts$msy[1,4]
+ssb_ric_y_msy_b130=as.numeric(ssb_ric_y_msy_b130)
+
+
+harvest_ric_x_crash_b130=RPs_ric_b130@refpts$crash[1,1]
+harvest_ric_x_crash_b130=as.numeric(harvest_ric_x_crash_b130)
+ssb_ric_y_crash_b130=RPs_ric_b130@refpts$crash[1,4]
+ssb_ric_y_crash_b130=as.numeric(ssb_ric_y_crash_b130)
+
+
+
+
+# BH ##########################################################################
+
+# BH Base
+
+harvest_bh_x_virgin=RPs_bh@refpts$virgin[1,1]
+harvest_bh_x_virgin=as.numeric(harvest_bh_x_virgin)
+ssb_bh_y_virgin=RPs_bh@refpts$virgin[1,4]
+ssb_bh_y_virgin=as.numeric(ssb_bh_y_virgin)
+
+harvest_bh_x_msy=RPs_bh@refpts$msy[1,1]
+harvest_bh_x_msy=as.numeric(harvest_bh_x_msy)
+ssb_bh_y_msy=RPs_bh@refpts$msy[1,4]
+ssb_bh_y_msy=as.numeric(ssb_bh_y_msy)
+
+
+harvest_bh_x_crash=RPs_bh@refpts$crash[1,1]
+harvest_bh_x_crash=as.numeric(harvest_bh_x_crash)
+ssb_bh_y_crash=RPs_bh@refpts$crash[1,4]
+ssb_bh_y_crash=as.numeric(ssb_bh_y_crash)
+
+
+# BH Parametro a 70%
+
+harvest_bh_x_virgin_a070=RPs_bh_a070@refpts$virgin[1,1]
+harvest_bh_x_virgin_a070=as.numeric(harvest_bh_x_virgin_a070)
+ssb_bh_y_virgin_a070=RPs_bh_a070@refpts$virgin[1,4]
+ssb_bh_y_virgin_a070=as.numeric(ssb_bh_y_virgin_a070)
+
+harvest_bh_x_msy_a070=RPs_bh_a070@refpts$msy[1,1]
+harvest_bh_x_msy_a070=as.numeric(harvest_bh_x_msy_a070)
+ssb_bh_y_msy_a070=RPs_bh_a070@refpts$msy[1,4]
+ssb_bh_y_msy_a070=as.numeric(ssb_bh_y_msy_a070)
+
+
+harvest_bh_x_crash_a070=RPs_bh_a070@refpts$crash[1,1]
+harvest_bh_x_crash_a070=as.numeric(harvest_bh_x_crash_a070)
+ssb_bh_y_crash_a070=RPs_bh_a070@refpts$crash[1,4]
+ssb_bh_y_crash_a070=as.numeric(ssb_bh_y_crash_a070)
+
+# BH Parametro a 130%
+
+harvest_bh_x_virgin_a130=RPs_bh_a130@refpts$virgin[1,1]
+harvest_bh_x_virgin_a130=as.numeric(harvest_bh_x_virgin_a130)
+ssb_bh_y_virgin_a130=RPs_bh_a130@refpts$virgin[1,4]
+ssb_bh_y_virgin_a130=as.numeric(ssb_bh_y_virgin_a130)
+
+harvest_bh_x_msy_a130=RPs_bh_a130@refpts$msy[1,1]
+harvest_bh_x_msy_a130=as.numeric(harvest_bh_x_msy_a130)
+ssb_bh_y_msy_a130=RPs_bh_a130@refpts$msy[1,4]
+ssb_bh_y_msy_a130=as.numeric(ssb_bh_y_msy_a130)
+
+
+harvest_bh_x_crash_a130=RPs_bh_a130@refpts$crash[1,1]
+harvest_bh_x_crash_a130=as.numeric(harvest_bh_x_crash_a130)
+ssb_bh_y_crash_a130=RPs_bh_a130@refpts$crash[1,4]
+ssb_bh_y_crash_a130=as.numeric(ssb_bh_y_crash_a130)
+
+# BH Parametro b 70%
+
+harvest_bh_x_virgin_b070=RPs_bh_b070@refpts$virgin[1,1]
+harvest_bh_x_virgin_b070=as.numeric(harvest_bh_x_virgin_b070)
+ssb_bh_y_virgin_b070=RPs_bh_b070@refpts$virgin[1,4]
+ssb_bh_y_virgin_b070=as.numeric(ssb_bh_y_virgin_b070)
+
+harvest_bh_x_msy_b070=RPs_bh_b070@refpts$msy[1,1]
+harvest_bh_x_msy_b070=as.numeric(harvest_bh_x_msy_b070)
+ssb_bh_y_msy_b070=RPs_bh_b070@refpts$msy[1,4]
+ssb_bh_y_msy_b070=as.numeric(ssb_bh_y_msy_b070)
+
+
+harvest_bh_x_crash_b070=RPs_bh_b070@refpts$crash[1,1]
+harvest_bh_x_crash_b070=as.numeric(harvest_bh_x_crash_b070)
+ssb_bh_y_crash_b070=RPs_bh_b070@refpts$crash[1,4]
+ssb_bh_y_crash_b070=as.numeric(ssb_bh_y_crash_b070)
+
+# BH Parametro b 130%
+
+harvest_bh_x_virgin_b130=RPs_bh_b130@refpts$virgin[1,1]
+harvest_bh_x_virgin_b130=as.numeric(harvest_bh_x_virgin_b130)
+ssb_bh_y_virgin_b130=RPs_bh_b130@refpts$virgin[1,4]
+ssb_bh_y_virgin_b130=as.numeric(ssb_bh_y_virgin_b130)
+
+harvest_bh_x_msy_b130=RPs_bh_b130@refpts$msy[1,1]
+harvest_bh_x_msy_b130=as.numeric(harvest_bh_x_msy_b130)
+ssb_bh_y_msy_b130=RPs_bh_b130@refpts$msy[1,4]
+ssb_bh_y_msy_b130=as.numeric(ssb_bh_y_msy_b130)
+
+
+harvest_bh_x_crash_b130=RPs_bh_b130@refpts$crash[1,1]
+harvest_bh_x_crash_b130=as.numeric(harvest_bh_x_crash_b130)
+ssb_bh_y_crash_b130=RPs_bh_b130@refpts$crash[1,4]
+ssb_bh_y_crash_b130=as.numeric(ssb_bh_y_crash_b130)
+
+
+# Harvest SSB plot BH
+
+BH1 <- ggplot() +
+  geom_line(data = BH.df.harvest.ssb.a, aes(x = V1, y = V2, color = "Base"),  linewidth = 1) +
+  geom_line(data = BH.df.harvest.ssb.a, aes(x = V3, y = V4, color = "a * 0.70"),  linewidth = 1) +
+  geom_line(data = BH.df.harvest.ssb.a, aes(x = V5, y = V6, color = "a * 1.30"),  linewidth = 1) +
+  geom_point(aes(x = harvest_bh_x_msy_a070, y = ssb_bh_y_msy_a070,shape = "MSY"), color = "orange",size = 2) +
+  geom_point(aes(x = harvest_bh_x_virgin_a070, y = ssb_bh_y_virgin_a070,shape = "Virgin",), color = "orange",size = 2) +
+  geom_point(aes(x = harvest_bh_x_crash_a070, y = ssb_bh_y_crash_a070,shape = "Crash"), color = "orange",size = 2) +
+  geom_point(aes(x = harvest_bh_x_msy_a130, y = ssb_bh_y_msy_a130,shape = "MSY"), color = "red",size = 2) +
+  geom_point(aes(x = harvest_bh_x_virgin_a130, y = ssb_bh_y_virgin_a130,shape = "Virgin"), color = "red",size = 2) +
+  geom_point(aes(x = harvest_bh_x_crash_a130, y = ssb_bh_y_crash_a130,shape = "Crash"), color = "red",size = 2) +
+  geom_point(aes(x = harvest_bh_x_msy, y = ssb_bh_y_msy,shape = "MSY" ), color = "black",size = 2) +
+  geom_point(aes(x = harvest_bh_x_virgin, y = ssb_bh_y_virgin,shape = "Virgin"), color = "black",size = 2) +
+  geom_point(aes(x = harvest_bh_x_crash, y = ssb_bh_y_crash,shape = "Crash"), color = "black",size = 2) +
+  scale_color_manual(name = "Model", values = colores) +
+    scale_shape_manual(name = "RPs",values = c("MSY" = 2, "Virgin" = 1, "Crash" = 7)) +
+  labs(x = "Fbar", y = "SSB", title = "SSB vs. Fbar  ")+
+  theme(legend.position = "none")
+BH1
+
+
+BH2 <- ggplot() +
+  geom_line(data = BH.df.harvest.ssb.b, aes(x = V1, y = V2, color = "Base"),  linewidth = 1) +
+  geom_line(data = BH.df.harvest.ssb.b, aes(x = V3, y = V4, color = "b * 0.70"),  linewidth = 1) +
+  geom_line(data = BH.df.harvest.ssb.b, aes(x = V5, y = V6, color = "b * 1.30"),  linewidth = 1) +
+  geom_point(aes(x = harvest_bh_x_msy_b070, y = ssb_bh_y_msy_b070,shape = "MSY"), color = "green",size = 2) +
+  geom_point(aes(x = harvest_bh_x_virgin_b070, y = ssb_bh_y_virgin_b070,shape = "Virgin"), color = "green",size = 2) +
+  geom_point(aes(x = harvest_bh_x_crash_b070, y = ssb_bh_y_crash_b070,shape = "Crash"), color = "green",size = 2) +
+  geom_point(aes(x = harvest_bh_x_msy_b130, y = ssb_bh_y_msy_b130,shape = "MSY"), color = "blue",size = 2) +
+  geom_point(aes(x = harvest_bh_x_virgin_b130, y = ssb_bh_y_virgin_b130,shape = "Virgin"), color = "blue",size = 2) +
+  geom_point(aes(x = harvest_bh_x_crash_b130, y = ssb_bh_y_crash_b130,shape = "Crash"), color = "blue",size = 2) +
+  geom_point(aes(x = harvest_bh_x_msy, y = ssb_bh_y_msy,shape = "MSY"), color = "black",size = 2) +
+  geom_point(aes(x = harvest_bh_x_virgin, y = ssb_bh_y_virgin,shape = "Virgin"), color = "black",size = 2) +
+  geom_point(aes(x = harvest_bh_x_crash, y = ssb_bh_y_crash,shape = "Crash"), color = "black",size = 2) +
+  scale_color_manual(name = "Model", values = colores) +
+    scale_shape_manual(name = "RPs",values = c("MSY" = 2, "Virgin" = 1, "Crash" = 7)) +
+  labs(x = "Fbar", y = "SSB", title = "SSB vs. Fbar  ")+
+  theme(legend.position = "none")
+BH2
+
+
+
+# Harvest SSB plot RIC
+
+RIC1 <- ggplot() +
+  geom_line(data = RIC.df.harvest.ssb.a, aes(x = V1, y = V2, color = "Base"),  linewidth = 1) +
+  geom_line(data = RIC.df.harvest.ssb.a, aes(x = V3, y = V4, color = "a * 0.70"),  linewidth = 1) +
+  geom_line(data = RIC.df.harvest.ssb.a, aes(x = V5, y = V6, color = "a * 1.30"),  linewidth = 1) +
+  geom_point(aes(x = harvest_ric_x_msy_a070, y = ssb_ric_y_msy_a070,shape = "MSY"), color = "orange",size = 2) +
+  geom_point(aes(x = harvest_ric_x_virgin_a070, y = ssb_ric_y_virgin_a070,shape = "Virgin",), color = "orange",size = 2) +
+  geom_point(aes(x = harvest_ric_x_crash_a070, y = ssb_ric_y_crash_a070,shape = "Crash"), color = "orange",size = 2) +
+  geom_point(aes(x = harvest_ric_x_msy_a130, y = ssb_ric_y_msy_a130,shape = "MSY"), color = "red",size = 2) +
+  geom_point(aes(x = harvest_ric_x_virgin_a130, y = ssb_ric_y_virgin_a130,shape = "Virgin"), color = "red",size = 2) +
+  geom_point(aes(x = harvest_ric_x_crash_a130, y = ssb_ric_y_crash_a130,shape = "Crash"), color = "red",size = 2) +
+  geom_point(aes(x = harvest_ric_x_msy, y = ssb_ric_y_msy,shape = "MSY"), color = "black",size = 2) +
+  geom_point(aes(x = harvest_ric_x_virgin, y = ssb_ric_y_virgin,shape = "Virgin"), color = "black",size = 2) +
+  geom_point(aes(x = harvest_ric_x_crash, y = ssb_ric_y_crash,shape = "Crash"), color = "black",size = 2) +
+  scale_color_manual(name = "Model", values = colores) +
+    scale_shape_manual(name = "RPs",values = c("MSY" = 2, "Virgin" = 1, "Crash" = 7)) +
+  labs(x = "Fbar", y = "SSB", title = "SSB vs. Fbar  ")+
+  theme(legend.position = "none")
+RIC1
+
+
+RIC2 <- ggplot() +
+  geom_line(data = RIC.df.harvest.ssb.b, aes(x = V1, y = V2, color = "Base"),  linewidth = 1) +
+  geom_line(data = RIC.df.harvest.ssb.b, aes(x = V3, y = V4, color = "b * 0.70"),  linewidth = 1) +
+  geom_line(data = RIC.df.harvest.ssb.b, aes(x = V5, y = V6, color = "b * 1.30"),  linewidth = 1) +
+  geom_point(aes(x = harvest_ric_x_msy_b070, y = ssb_ric_y_msy_b070,shape = "MSY"), color = "green",size = 2) +
+  geom_point(aes(x = harvest_ric_x_virgin_b070, y = ssb_ric_y_virgin_b070,shape = "Virgin"), color = "green",size = 2) +
+  geom_point(aes(x = harvest_ric_x_crash_b070, y = ssb_ric_y_crash_b070,shape = "Crash"), color = "green",size = 2) +
+  geom_point(aes(x = harvest_ric_x_msy_b130, y = ssb_ric_y_msy_b130,shape = "MSY"), color = "blue",size = 2) +
+  geom_point(aes(x = harvest_ric_x_virgin_b130, y = ssb_ric_y_virgin_b130,shape = "Virgin"), color = "blue",size = 2) +
+  geom_point(aes(x = harvest_ric_x_crash_b130, y = ssb_ric_y_crash_b130,shape = "Crash"), color = "blue",size = 2) +
+  geom_point(aes(x = harvest_ric_x_msy, y = ssb_ric_y_msy,shape = "MSY"), color = "black",size = 2) +
+  geom_point(aes(x = harvest_ric_x_virgin, y = ssb_ric_y_virgin,shape = "Virgin",), color = "black",size = 2) +
+  geom_point(aes(x = harvest_ric_x_crash, y = ssb_ric_y_crash,shape = "Crash"), color = "black",size = 2) +
+  scale_color_manual(name = "Model", values = colores) +
+    scale_shape_manual(name = "RPs",values = c("MSY" = 2, "Virgin" = 1, "Crash" = 7)) +
+  labs(x = "Fbar", y = "SSB", title = "SSB vs. Fbar  ")+
+  theme(legend.position = "none")
+RIC2
+```
+
+
+#### Yield vs Fbar
+
+```{r}
+### RICKER
+# RICKER Base
+
+harvest_ric_x_virgin=RPs_ric@refpts$virgin[1,1]
+harvest_ric_x_virgin=as.numeric(harvest_ric_x_virgin)
+yield_ric_y_virgin=RPs_ric@refpts$virgin[1,2]
+yield_ric_y_virgin=as.numeric(yield_ric_y_virgin)
+
+harvest_ric_x_msy=RPs_ric@refpts$msy[1,1]
+harvest_ric_x_msy=as.numeric(harvest_ric_x_msy)
+yield_ric_y_msy=RPs_ric@refpts$msy[1,2]
+yield_ric_y_msy=as.numeric(yield_ric_y_msy)
+
+
+harvest_ric_x_crash=RPs_ric@refpts$crash[1,1]
+harvest_ric_x_crash=as.numeric(harvest_ric_x_crash)
+yield_ric_y_crash=RPs_ric@refpts$crash[1,2]
+yield_ric_y_crash=as.numeric(yield_ric_y_crash)
+
+
+# RICKER Parametro a 70%
+
+harvest_ric_x_virgin_a070=RPs_ric_a070@refpts$virgin[1,1]
+harvest_ric_x_virgin_a070=as.numeric(harvest_ric_x_virgin_a070)
+yield_ric_y_virgin_a070=RPs_ric_a070@refpts$virgin[1,2]
+yield_ric_y_virgin_a070=as.numeric(yield_ric_y_virgin_a070)
+
+harvest_ric_x_msy_a070=RPs_ric_a070@refpts$msy[1,1]
+harvest_ric_x_msy_a070=as.numeric(harvest_ric_x_msy_a070)
+yield_ric_y_msy_a070=RPs_ric_a070@refpts$msy[1,2]
+yield_ric_y_msy_a070=as.numeric(yield_ric_y_msy_a070)
+
+
+harvest_ric_x_crash_a070=RPs_ric_a070@refpts$crash[1,1]
+harvest_ric_x_crash_a070=as.numeric(harvest_ric_x_crash_a070)
+yield_ric_y_crash_a070=RPs_ric_a070@refpts$crash[1,2]
+yield_ric_y_crash_a070=as.numeric(yield_ric_y_crash_a070)
+
+# RICKER Parametro a 130%
+
+harvest_ric_x_virgin_a130=RPs_ric_a130@refpts$virgin[1,1]
+harvest_ric_x_virgin_a130=as.numeric(harvest_ric_x_virgin_a130)
+yield_ric_y_virgin_a130=RPs_ric_a130@refpts$virgin[1,2]
+yield_ric_y_virgin_a130=as.numeric(yield_ric_y_virgin_a130)
+
+harvest_ric_x_msy_a130=RPs_ric_a130@refpts$msy[1,1]
+harvest_ric_x_msy_a130=as.numeric(harvest_ric_x_msy_a130)
+yield_ric_y_msy_a130=RPs_ric_a130@refpts$msy[1,2]
+yield_ric_y_msy_a130=as.numeric(yield_ric_y_msy_a130)
+
+
+harvest_ric_x_crash_a130=RPs_ric_a130@refpts$crash[1,1]
+harvest_ric_x_crash_a130=as.numeric(harvest_ric_x_crash_a130)
+yield_ric_y_crash_a130=RPs_ric_a130@refpts$crash[1,2]
+yield_ric_y_crash_a130=as.numeric(yield_ric_y_crash_a130)
+
+# RICKER Parametro b 70%
+
+harvest_ric_x_virgin_b070=RPs_ric_b070@refpts$virgin[1,1]
+harvest_ric_x_virgin_b070=as.numeric(harvest_ric_x_virgin_b070)
+yield_ric_y_virgin_b070=RPs_ric_b070@refpts$virgin[1,2]
+yield_ric_y_virgin_b070=as.numeric(yield_ric_y_virgin_b070)
+
+harvest_ric_x_msy_b070=RPs_ric_b070@refpts$msy[1,1]
+harvest_ric_x_msy_b070=as.numeric(harvest_ric_x_msy_b070)
+yield_ric_y_msy_b070=RPs_ric_b070@refpts$msy[1,2]
+yield_ric_y_msy_b070=as.numeric(yield_ric_y_msy_b070)
+
+
+harvest_ric_x_crash_b070=RPs_ric_b070@refpts$crash[1,1]
+harvest_ric_x_crash_b070=as.numeric(harvest_ric_x_crash_b070)
+yield_ric_y_crash_b070=RPs_ric_b070@refpts$crash[1,2]
+yield_ric_y_crash_b070=as.numeric(yield_ric_y_crash_b070)
+
+# RICKER Parametro b 130%
+
+harvest_ric_x_virgin_b130=RPs_ric_b130@refpts$virgin[1,1]
+harvest_ric_x_virgin_b130=as.numeric(harvest_ric_x_virgin_b130)
+yield_ric_y_virgin_b130=RPs_ric_b130@refpts$virgin[1,2]
+yield_ric_y_virgin_b130=as.numeric(yield_ric_y_virgin_b130)
+
+harvest_ric_x_msy_b130=RPs_ric_b130@refpts$msy[1,1]
+harvest_ric_x_msy_b130=as.numeric(harvest_ric_x_msy_b130)
+yield_ric_y_msy_b130=RPs_ric_b130@refpts$msy[1,2]
+yield_ric_y_msy_b130=as.numeric(yield_ric_y_msy_b130)
+
+
+harvest_ric_x_crash_b130=RPs_ric_b130@refpts$crash[1,1]
+harvest_ric_x_crash_b130=as.numeric(harvest_ric_x_crash_b130)
+yield_ric_y_crash_b130=RPs_ric_b130@refpts$crash[1,2]
+yield_ric_y_crash_b130=as.numeric(yield_ric_y_crash_b130)
+
+
+
+
+# BH ##########################################################################
+
+# BH Base
+
+harvest_bh_x_virgin=RPs_bh@refpts$virgin[1,1]
+harvest_bh_x_virgin=as.numeric(harvest_bh_x_virgin)
+yield_bh_y_virgin=RPs_bh@refpts$virgin[1,2]
+yield_bh_y_virgin=as.numeric(yield_bh_y_virgin)
+
+harvest_bh_x_msy=RPs_bh@refpts$msy[1,1]
+harvest_bh_x_msy=as.numeric(harvest_bh_x_msy)
+yield_bh_y_msy=RPs_bh@refpts$msy[1,2]
+yield_bh_y_msy=as.numeric(yield_bh_y_msy)
+
+
+harvest_bh_x_crash=RPs_bh@refpts$crash[1,1]
+harvest_bh_x_crash=as.numeric(harvest_bh_x_crash)
+yield_bh_y_crash=RPs_bh@refpts$crash[1,2]
+yield_bh_y_crash=as.numeric(yield_bh_y_crash)
+
+
+# BH Parametro a 70%
+
+harvest_bh_x_virgin_a070=RPs_bh_a070@refpts$virgin[1,1]
+harvest_bh_x_virgin_a070=as.numeric(harvest_bh_x_virgin_a070)
+yield_bh_y_virgin_a070=RPs_bh_a070@refpts$virgin[1,2]
+yield_bh_y_virgin_a070=as.numeric(yield_bh_y_virgin_a070)
+
+harvest_bh_x_msy_a070=RPs_bh_a070@refpts$msy[1,1]
+harvest_bh_x_msy_a070=as.numeric(harvest_bh_x_msy_a070)
+yield_bh_y_msy_a070=RPs_bh_a070@refpts$msy[1,2]
+yield_bh_y_msy_a070=as.numeric(yield_bh_y_msy_a070)
+
+
+harvest_bh_x_crash_a070=RPs_bh_a070@refpts$crash[1,1]
+harvest_bh_x_crash_a070=as.numeric(harvest_bh_x_crash_a070)
+yield_bh_y_crash_a070=RPs_bh_a070@refpts$crash[1,2]
+yield_bh_y_crash_a070=as.numeric(yield_bh_y_crash_a070)
+
+# BH Parametro a 130%
+
+harvest_bh_x_virgin_a130=RPs_bh_a130@refpts$virgin[1,1]
+harvest_bh_x_virgin_a130=as.numeric(harvest_bh_x_virgin_a130)
+yield_bh_y_virgin_a130=RPs_bh_a130@refpts$virgin[1,2]
+yield_bh_y_virgin_a130=as.numeric(yield_bh_y_virgin_a130)
+
+harvest_bh_x_msy_a130=RPs_bh_a130@refpts$msy[1,1]
+harvest_bh_x_msy_a130=as.numeric(harvest_bh_x_msy_a130)
+yield_bh_y_msy_a130=RPs_bh_a130@refpts$msy[1,2]
+yield_bh_y_msy_a130=as.numeric(yield_bh_y_msy_a130)
+
+
+harvest_bh_x_crash_a130=RPs_bh_a130@refpts$crash[1,1]
+harvest_bh_x_crash_a130=as.numeric(harvest_bh_x_crash_a130)
+yield_bh_y_crash_a130=RPs_bh_a130@refpts$crash[1,2]
+yield_bh_y_crash_a130=as.numeric(yield_bh_y_crash_a130)
+
+# BH Parametro b 70%
+
+harvest_bh_x_virgin_b070=RPs_bh_b070@refpts$virgin[1,1]
+harvest_bh_x_virgin_b070=as.numeric(harvest_bh_x_virgin_b070)
+yield_bh_y_virgin_b070=RPs_bh_b070@refpts$virgin[1,2]
+yield_bh_y_virgin_b070=as.numeric(yield_bh_y_virgin_b070)
+
+harvest_bh_x_msy_b070=RPs_bh_b070@refpts$msy[1,1]
+harvest_bh_x_msy_b070=as.numeric(harvest_bh_x_msy_b070)
+yield_bh_y_msy_b070=RPs_bh_b070@refpts$msy[1,2]
+yield_bh_y_msy_b070=as.numeric(yield_bh_y_msy_b070)
+
+
+harvest_bh_x_crash_b070=RPs_bh_b070@refpts$crash[1,1]
+harvest_bh_x_crash_b070=as.numeric(harvest_bh_x_crash_b070)
+yield_bh_y_crash_b070=RPs_bh_b070@refpts$crash[1,2]
+yield_bh_y_crash_b070=as.numeric(yield_bh_y_crash_b070)
+
+# BH Parametro b 130%
+
+harvest_bh_x_virgin_b130=RPs_bh_b130@refpts$virgin[1,1]
+harvest_bh_x_virgin_b130=as.numeric(harvest_bh_x_virgin_b130)
+yield_bh_y_virgin_b130=RPs_bh_b130@refpts$virgin[1,2]
+yield_bh_y_virgin_b130=as.numeric(yield_bh_y_virgin_b130)
+
+harvest_bh_x_msy_b130=RPs_bh_b130@refpts$msy[1,1]
+harvest_bh_x_msy_b130=as.numeric(harvest_bh_x_msy_b130)
+yield_bh_y_msy_b130=RPs_bh_b130@refpts$msy[1,2]
+yield_bh_y_msy_b130=as.numeric(yield_bh_y_msy_b130)
+
+
+harvest_bh_x_crash_b130=RPs_bh_b130@refpts$crash[1,1]
+harvest_bh_x_crash_b130=as.numeric(harvest_bh_x_crash_b130)
+yield_bh_y_crash_b130=RPs_bh_b130@refpts$crash[1,2]
+yield_bh_y_crash_b130=as.numeric(yield_bh_y_crash_b130)
+
+
+# Harvest yield plot BH
+BH3 <- ggplot() +
+  geom_line(data = BH.df.harvest.yield.a, aes(x = V1, y = V2, color = "Base"),  linewidth = 1) +
+  geom_line(data = BH.df.harvest.yield.a, aes(x = V3, y = V4, color = "a * 0.70"),  linewidth = 1) +
+  geom_line(data = BH.df.harvest.yield.a, aes(x = V5, y = V6, color = "a * 1.30"),  linewidth = 1) +
+  geom_point(aes(x = harvest_bh_x_msy_a070, y = yield_bh_y_msy_a070, shape = "MSY"), color = "orange",size = 2) +
+  geom_point(aes(x = harvest_bh_x_virgin_a070, y = yield_bh_y_virgin_a070, shape = "Virgin"), color = "orange",size = 2) +
+  geom_point(aes(x = harvest_bh_x_crash_a070, y = yield_bh_y_crash_a070, shape = "Crash"), color = "orange",size = 2) +
+  geom_point(aes(x = harvest_bh_x_msy_a130, y = yield_bh_y_msy_a130, shape = "MSY"), color = "red",size = 2) +
+  geom_point(aes(x = harvest_bh_x_virgin_a130, y = yield_bh_y_virgin_a130, shape = "Virgin"), color = "red",size = 2) +
+  geom_point(aes(x = harvest_bh_x_crash_a130, y = yield_bh_y_crash_a130, shape = "Crash"), color = "red",size = 2) +
+  geom_point(aes(x = harvest_bh_x_msy, y = yield_bh_y_msy, shape = "MSY"), color = "black",size = 2) +
+  geom_point(aes(x = harvest_bh_x_virgin, y = yield_bh_y_virgin, shape = "Virgin"), color = "black",size = 2) +
+  geom_point(aes(x = harvest_bh_x_crash, y = yield_bh_y_crash, shape = "Crash"), color = "black",size = 2) +
+  scale_color_manual(name = "Model", values = colores) +
+  scale_shape_manual(name = "RPs",values = c("MSY" = 2, "Virgin" = 1, "Crash" = 7)) +
+  labs(x = "Fbar", y = "yield", title = "yield vs. Fbar")
+
+BH4 <- ggplot() +
+  geom_line(data = BH.df.harvest.yield.b, aes(x = V1, y = V2, color = "Base"),  linewidth = 1) +
+  geom_line(data = BH.df.harvest.yield.b, aes(x = V3, y = V4, color = "b * 0.70"),  linewidth = 1) +
+  geom_line(data = BH.df.harvest.yield.b, aes(x = V5, y = V6, color = "b * 1.30"),  linewidth = 1) +
+  geom_point(aes(x = harvest_bh_x_msy_b070, y = yield_bh_y_msy_b070, shape = "MSY"), color = "green",size = 2) +
+  geom_point(aes(x = harvest_bh_x_virgin_b070, y = yield_bh_y_virgin_b070, shape = "Virgin"), color = "green",size = 2) +
+  geom_point(aes(x = harvest_bh_x_crash_b070, y = yield_bh_y_crash_b070, shape = "Crash"), color = "green",size = 2) +
+  geom_point(aes(x = harvest_bh_x_msy_b130, y = yield_bh_y_msy_b130, shape = "MSY"), color = "blue",size = 2) +
+  geom_point(aes(x = harvest_bh_x_virgin_b130, y = yield_bh_y_virgin_b130, shape = "Virgin"), color = "blue",size = 2) +
+  geom_point(aes(x = harvest_bh_x_crash_b130, y = yield_bh_y_crash_b130, shape = "Crash"), color = "blue",size = 2) +
+  geom_point(aes(x = harvest_bh_x_msy, y = yield_bh_y_msy, shape = "MSY"), color = "black",size = 2) +
+  geom_point(aes(x = harvest_bh_x_virgin, y = yield_bh_y_virgin, shape = "Virgin"), color = "black",size = 2) +
+  geom_point(aes(x = harvest_bh_x_crash, y = yield_bh_y_crash, shape = "Crash"), color = "black",size = 2) +
+  scale_color_manual(name = "Model", values = colores) +
+  scale_shape_manual(name = "RPs",values = c("MSY" = 2, "Virgin" = 1, "Crash" = 7)) +
+  labs(x = "Fbar", y = "yield", title = "yield vs. Fbar")
+
+RIC3 <- ggplot() +
+  geom_line(data = RIC.df.harvest.yield.a, aes(x = V1, y = V2, color = "Base"),  linewidth = 1) +
+  geom_line(data = RIC.df.harvest.yield.a, aes(x = V3, y = V4, color = "a * 0.70"),  linewidth = 1) +
+  geom_line(data = RIC.df.harvest.yield.a, aes(x = V5, y = V6, color = "a * 1.30"),  linewidth = 1) +
+  geom_point(aes(x = harvest_ric_x_msy_a070, y = yield_ric_y_msy_a070, shape = "MSY"), color = "orange",size = 2) +
+  geom_point(aes(x = harvest_ric_x_virgin_a070, y = yield_ric_y_virgin_a070, shape = "Virgin"), color = "orange",size = 2) +
+  geom_point(aes(x = harvest_ric_x_crash_a070, y = yield_ric_y_crash_a070, shape = "Crash"), color = "orange",size = 2) +
+  geom_point(aes(x = harvest_ric_x_msy_a130, y = yield_ric_y_msy_a130, shape = "MSY"), color = "red",size = 2) +
+  geom_point(aes(x = harvest_ric_x_virgin_a130, y = yield_ric_y_virgin_a130, shape = "Virgin"), color = "red",size = 2) +
+  geom_point(aes(x = harvest_ric_x_crash_a130, y = yield_ric_y_crash_a130, shape = "Crash"), color = "red",size = 2) +
+  geom_point(aes(x = harvest_ric_x_msy, y = yield_ric_y_msy, shape = "MSY"), color = "black",size = 2) +
+  geom_point(aes(x = harvest_ric_x_virgin, y = yield_ric_y_virgin, shape = "Virgin"), color = "black",size = 2) +
+  geom_point(aes(x = harvest_ric_x_crash, y = yield_ric_y_crash, shape = "Crash"), color = "black",size = 2) +
+  scale_color_manual(name = "Model", values = colores) +
+  scale_shape_manual(name = "RPs",values = c("MSY" = 2, "Virgin" = 1, "Crash" = 7)) +
+  labs(x = "Fbar", y = "yield", title = "yield vs. Fbar")
+
+RIC4 <- ggplot() +
+  geom_line(data = RIC.df.harvest.yield.b, aes(x = V1, y = V2, color = "Base"),  linewidth = 1) +
+  geom_line(data = RIC.df.harvest.yield.b, aes(x = V3, y = V4, color = "b * 0.70"),  linewidth = 1) +
+  geom_line(data = RIC.df.harvest.yield.b, aes(x = V5, y = V6, color = "b * 1.30"),  linewidth = 1) +
+  geom_point(aes(x = harvest_ric_x_msy_b070, y = yield_ric_y_msy_b070, shape = "MSY"), color = "green",size = 2) +
+  geom_point(aes(x = harvest_ric_x_virgin_b070, y = yield_ric_y_virgin_b070, shape = "Virgin"), color = "green",size = 2) +
+  geom_point(aes(x = harvest_ric_x_crash_b070, y = yield_ric_y_crash_b070, shape = "Crash"), color = "green",size = 2) +
+  geom_point(aes(x = harvest_ric_x_msy_b130, y = yield_ric_y_msy_b130, shape = "MSY"), color = "blue",size = 2) +
+  geom_point(aes(x = harvest_ric_x_virgin_b130, y = yield_ric_y_virgin_b130, shape = "Virgin"), color = "blue",size = 2) +
+  geom_point(aes(x = harvest_ric_x_crash_b130, y = yield_ric_y_crash_b130, shape = "Crash"), color = "blue",size = 2) +
+  geom_point(aes(x = harvest_ric_x_msy, y = yield_ric_y_msy, shape = "MSY"), color = "black",size = 2) +
+  geom_point(aes(x = harvest_ric_x_virgin, y = yield_ric_y_virgin, shape = "Virgin"), color = "black",size = 2) +
+  geom_point(aes(x = harvest_ric_x_crash, y = yield_ric_y_crash, shape = "Crash"), color = "black",size = 2) +
+  scale_color_manual(name = "Model", values = colores) +
+  scale_shape_manual(name = "RPs",values = c("MSY" = 2, "Virgin" = 1, "Crash" = 7)) +
+  labs(x = "Fbar", y = "yield", title = "yield vs. Fbar")
+
+BH3
+BH4
+RIC3
+RIC4
+
+```
+
+#### Yield vs SSB
+
+```{r}
+### RICKER
+# RICKER Base
+
+ssb_ric_x_virgin=RPs_ric@refpts$virgin[1,4]
+ssb_ric_x_virgin=as.numeric(ssb_ric_x_virgin)
+yield_ric_y_virgin=RPs_ric@refpts$virgin[1,2]
+yield_ric_y_virgin=as.numeric(yield_ric_y_virgin)
+
+ssb_ric_x_msy=RPs_ric@refpts$msy[1,4]
+ssb_ric_x_msy=as.numeric(ssb_ric_x_msy)
+yield_ric_y_msy=RPs_ric@refpts$msy[1,2]
+yield_ric_y_msy=as.numeric(yield_ric_y_msy)
+
+
+ssb_ric_x_crash=RPs_ric@refpts$crash[1,4]
+ssb_ric_x_crash=as.numeric(ssb_ric_x_crash)
+yield_ric_y_crash=RPs_ric@refpts$crash[1,2]
+yield_ric_y_crash=as.numeric(yield_ric_y_crash)
+
+
+# RICKER Parametro a 70%
+
+ssb_ric_x_virgin_a070=RPs_ric_a070@refpts$virgin[1,4]
+ssb_ric_x_virgin_a070=as.numeric(ssb_ric_x_virgin_a070)
+yield_ric_y_virgin_a070=RPs_ric_a070@refpts$virgin[1,2]
+yield_ric_y_virgin_a070=as.numeric(yield_ric_y_virgin_a070)
+
+ssb_ric_x_msy_a070=RPs_ric_a070@refpts$msy[1,4]
+ssb_ric_x_msy_a070=as.numeric(ssb_ric_x_msy_a070)
+yield_ric_y_msy_a070=RPs_ric_a070@refpts$msy[1,2]
+yield_ric_y_msy_a070=as.numeric(yield_ric_y_msy_a070)
+
+
+ssb_ric_x_crash_a070=RPs_ric_a070@refpts$crash[1,4]
+ssb_ric_x_crash_a070=as.numeric(ssb_ric_x_crash_a070)
+yield_ric_y_crash_a070=RPs_ric_a070@refpts$crash[1,2]
+yield_ric_y_crash_a070=as.numeric(yield_ric_y_crash_a070)
+
+# RICKER Parametro a 130%
+
+ssb_ric_x_virgin_a130=RPs_ric_a130@refpts$virgin[1,4]
+ssb_ric_x_virgin_a130=as.numeric(ssb_ric_x_virgin_a130)
+yield_ric_y_virgin_a130=RPs_ric_a130@refpts$virgin[1,2]
+yield_ric_y_virgin_a130=as.numeric(yield_ric_y_virgin_a130)
+
+ssb_ric_x_msy_a130=RPs_ric_a130@refpts$msy[1,4]
+ssb_ric_x_msy_a130=as.numeric(ssb_ric_x_msy_a130)
+yield_ric_y_msy_a130=RPs_ric_a130@refpts$msy[1,2]
+yield_ric_y_msy_a130=as.numeric(yield_ric_y_msy_a130)
+
+
+ssb_ric_x_crash_a130=RPs_ric_a130@refpts$crash[1,4]
+ssb_ric_x_crash_a130=as.numeric(ssb_ric_x_crash_a130)
+yield_ric_y_crash_a130=RPs_ric_a130@refpts$crash[1,2]
+yield_ric_y_crash_a130=as.numeric(yield_ric_y_crash_a130)
+
+# RICKER Parametro b 70%
+
+ssb_ric_x_virgin_b070=RPs_ric_b070@refpts$virgin[1,4]
+ssb_ric_x_virgin_b070=as.numeric(ssb_ric_x_virgin_b070)
+yield_ric_y_virgin_b070=RPs_ric_b070@refpts$virgin[1,2]
+yield_ric_y_virgin_b070=as.numeric(yield_ric_y_virgin_b070)
+
+ssb_ric_x_msy_b070=RPs_ric_b070@refpts$msy[1,4]
+ssb_ric_x_msy_b070=as.numeric(ssb_ric_x_msy_b070)
+yield_ric_y_msy_b070=RPs_ric_b070@refpts$msy[1,2]
+yield_ric_y_msy_b070=as.numeric(yield_ric_y_msy_b070)
+
+
+ssb_ric_x_crash_b070=RPs_ric_b070@refpts$crash[1,4]
+ssb_ric_x_crash_b070=as.numeric(ssb_ric_x_crash_b070)
+yield_ric_y_crash_b070=RPs_ric_b070@refpts$crash[1,2]
+yield_ric_y_crash_b070=as.numeric(yield_ric_y_crash_b070)
+
+# RICKER Parametro b 130%
+
+ssb_ric_x_virgin_b130=RPs_ric_b130@refpts$virgin[1,4]
+ssb_ric_x_virgin_b130=as.numeric(ssb_ric_x_virgin_b130)
+yield_ric_y_virgin_b130=RPs_ric_b130@refpts$virgin[1,2]
+yield_ric_y_virgin_b130=as.numeric(yield_ric_y_virgin_b130)
+
+ssb_ric_x_msy_b130=RPs_ric_b130@refpts$msy[1,4]
+ssb_ric_x_msy_b130=as.numeric(ssb_ric_x_msy_b130)
+yield_ric_y_msy_b130=RPs_ric_b130@refpts$msy[1,2]
+yield_ric_y_msy_b130=as.numeric(yield_ric_y_msy_b130)
+
+
+ssb_ric_x_crash_b130=RPs_ric_b130@refpts$crash[1,4]
+ssb_ric_x_crash_b130=as.numeric(ssb_ric_x_crash_b130)
+yield_ric_y_crash_b130=RPs_ric_b130@refpts$crash[1,2]
+yield_ric_y_crash_b130=as.numeric(yield_ric_y_crash_b130)
+
+
+
+
+# BH ##########################################################################
+
+# BH Base
+
+ssb_bh_x_virgin=RPs_bh@refpts$virgin[1,4]
+ssb_bh_x_virgin=as.numeric(ssb_bh_x_virgin)
+yield_bh_y_virgin=RPs_bh@refpts$virgin[1,2]
+yield_bh_y_virgin=as.numeric(yield_bh_y_virgin)
+
+ssb_bh_x_msy=RPs_bh@refpts$msy[1,4]
+ssb_bh_x_msy=as.numeric(ssb_bh_x_msy)
+yield_bh_y_msy=RPs_bh@refpts$msy[1,2]
+yield_bh_y_msy=as.numeric(yield_bh_y_msy)
+
+
+ssb_bh_x_crash=RPs_bh@refpts$crash[1,4]
+ssb_bh_x_crash=as.numeric(ssb_bh_x_crash)
+yield_bh_y_crash=RPs_bh@refpts$crash[1,2]
+yield_bh_y_crash=as.numeric(yield_bh_y_crash)
+
+
+# BH Parametro a 70%
+
+ssb_bh_x_virgin_a070=RPs_bh_a070@refpts$virgin[1,4]
+ssb_bh_x_virgin_a070=as.numeric(ssb_bh_x_virgin_a070)
+yield_bh_y_virgin_a070=RPs_bh_a070@refpts$virgin[1,2]
+yield_bh_y_virgin_a070=as.numeric(yield_bh_y_virgin_a070)
+
+ssb_bh_x_msy_a070=RPs_bh_a070@refpts$msy[1,4]
+ssb_bh_x_msy_a070=as.numeric(ssb_bh_x_msy_a070)
+yield_bh_y_msy_a070=RPs_bh_a070@refpts$msy[1,2]
+yield_bh_y_msy_a070=as.numeric(yield_bh_y_msy_a070)
+
+
+ssb_bh_x_crash_a070=RPs_bh_a070@refpts$crash[1,4]
+ssb_bh_x_crash_a070=as.numeric(ssb_bh_x_crash_a070)
+yield_bh_y_crash_a070=RPs_bh_a070@refpts$crash[1,2]
+yield_bh_y_crash_a070=as.numeric(yield_bh_y_crash_a070)
+
+# BH Parametro a 130%
+
+ssb_bh_x_virgin_a130=RPs_bh_a130@refpts$virgin[1,4]
+ssb_bh_x_virgin_a130=as.numeric(ssb_bh_x_virgin_a130)
+yield_bh_y_virgin_a130=RPs_bh_a130@refpts$virgin[1,2]
+yield_bh_y_virgin_a130=as.numeric(yield_bh_y_virgin_a130)
+
+ssb_bh_x_msy_a130=RPs_bh_a130@refpts$msy[1,4]
+ssb_bh_x_msy_a130=as.numeric(ssb_bh_x_msy_a130)
+yield_bh_y_msy_a130=RPs_bh_a130@refpts$msy[1,2]
+yield_bh_y_msy_a130=as.numeric(yield_bh_y_msy_a130)
+
+
+ssb_bh_x_crash_a130=RPs_bh_a130@refpts$crash[1,4]
+ssb_bh_x_crash_a130=as.numeric(ssb_bh_x_crash_a130)
+yield_bh_y_crash_a130=RPs_bh_a130@refpts$crash[1,2]
+yield_bh_y_crash_a130=as.numeric(yield_bh_y_crash_a130)
+
+# BH Parametro b 70%
+
+ssb_bh_x_virgin_b070=RPs_bh_b070@refpts$virgin[1,4]
+ssb_bh_x_virgin_b070=as.numeric(ssb_bh_x_virgin_b070)
+yield_bh_y_virgin_b070=RPs_bh_b070@refpts$virgin[1,2]
+yield_bh_y_virgin_b070=as.numeric(yield_bh_y_virgin_b070)
+
+ssb_bh_x_msy_b070=RPs_bh_b070@refpts$msy[1,4]
+ssb_bh_x_msy_b070=as.numeric(ssb_bh_x_msy_b070)
+yield_bh_y_msy_b070=RPs_bh_b070@refpts$msy[1,2]
+yield_bh_y_msy_b070=as.numeric(yield_bh_y_msy_b070)
+
+
+ssb_bh_x_crash_b070=RPs_bh_b070@refpts$crash[1,4]
+ssb_bh_x_crash_b070=as.numeric(ssb_bh_x_crash_b070)
+yield_bh_y_crash_b070=RPs_bh_b070@refpts$crash[1,2]
+yield_bh_y_crash_b070=as.numeric(yield_bh_y_crash_b070)
+
+# BH Parametro b 130%
+
+ssb_bh_x_virgin_b130=RPs_bh_b130@refpts$virgin[1,4]
+ssb_bh_x_virgin_b130=as.numeric(ssb_bh_x_virgin_b130)
+yield_bh_y_virgin_b130=RPs_bh_b130@refpts$virgin[1,2]
+yield_bh_y_virgin_b130=as.numeric(yield_bh_y_virgin_b130)
+
+ssb_bh_x_msy_b130=RPs_bh_b130@refpts$msy[1,4]
+ssb_bh_x_msy_b130=as.numeric(ssb_bh_x_msy_b130)
+yield_bh_y_msy_b130=RPs_bh_b130@refpts$msy[1,2]
+yield_bh_y_msy_b130=as.numeric(yield_bh_y_msy_b130)
+
+
+ssb_bh_x_crash_b130=RPs_bh_b130@refpts$crash[1,4]
+ssb_bh_x_crash_b130=as.numeric(ssb_bh_x_crash_b130)
+yield_bh_y_crash_b130=RPs_bh_b130@refpts$crash[1,2]
+yield_bh_y_crash_b130=as.numeric(yield_bh_y_crash_b130)
+
+
+# ssb yield plot BH
+
+BH5 <- ggplot() +
+  geom_line(data = BH.df.ssb.yield.a, aes(x = V1, y = V2, color = "Base"),  linewidth = 1) +
+  geom_line(data = BH.df.ssb.yield.a, aes(x = V3, y = V4, color = "a * 0.70"),  linewidth = 1) +
+  geom_line(data = BH.df.ssb.yield.a, aes(x = V5, y = V6, color = "a * 1.30"),  linewidth = 1) +
+  geom_point(aes(x = ssb_bh_x_msy_a070, y = yield_bh_y_msy_a070, shape = "MSY"), color = "orange",size = 2) +
+  geom_point(aes(x = ssb_bh_x_virgin_a070, y = yield_bh_y_virgin_a070, shape = "Virgin"), color = "orange",size = 2) +
+  geom_point(aes(x = ssb_bh_x_crash_a070, y = yield_bh_y_crash_a070, shape = "Crash"), color = "orange",size = 2) +
+  geom_point(aes(x = ssb_bh_x_msy_a130, y = yield_bh_y_msy_a130, shape = "MSY"), color = "red",size = 2) +
+  geom_point(aes(x = ssb_bh_x_virgin_a130, y = yield_bh_y_virgin_a130, shape = "Virgin"), color = "red",size = 2) +
+  geom_point(aes(x = ssb_bh_x_crash_a130, y = yield_bh_y_crash_a130, shape = "Crash"), color = "red",size = 2) +
+  geom_point(aes(x = ssb_bh_x_msy, y = yield_bh_y_msy, shape = "MSY"), color = "black",size = 2) +
+  geom_point(aes(x = ssb_bh_x_virgin, y = yield_bh_y_virgin, shape = "Virgin"), color = "black",size = 2) +
+  geom_point(aes(x = ssb_bh_x_crash, y = yield_bh_y_crash, shape = "Crash"), color = "black",size = 2) +
+  scale_color_manual(name = "Model", values = colores) +
+  scale_shape_manual(name = "RPs",values = c("MSY" = 2, "Virgin" = 1, "Crash" = 7)) +
+  labs(x = "SSB", y = "yield", title = "yield vs SSB")+
+  theme(legend.position = "none")
+
+BH6 <- ggplot() +
+  geom_line(data = BH.df.ssb.yield.b, aes(x = V1, y = V2, color = "Base"),  linewidth = 1) +
+  geom_line(data = BH.df.ssb.yield.b, aes(x = V3, y = V4, color = "b * 0.70"),  linewidth = 1) +
+  geom_line(data = BH.df.ssb.yield.b, aes(x = V5, y = V6, color = "b * 1.30"),  linewidth = 1) +
+  geom_point(aes(x = ssb_bh_x_msy_b070, y = yield_bh_y_msy_b070, shape = "MSY"), color = "green",size = 2) +
+  geom_point(aes(x = ssb_bh_x_virgin_b070, y = yield_bh_y_virgin_b070, shape = "Virgin"), color = "green",size = 2) +
+  geom_point(aes(x = ssb_bh_x_crash_b070, y = yield_bh_y_crash_b070, shape = "Crash"), color = "green",size = 2) +
+  geom_point(aes(x = ssb_bh_x_msy_b130, y = yield_bh_y_msy_b130, shape = "MSY"), color = "blue",size = 2) +
+  geom_point(aes(x = ssb_bh_x_virgin_b130, y = yield_bh_y_virgin_b130, shape = "Virgin"), color = "blue",size = 2) +
+  geom_point(aes(x = ssb_bh_x_crash_b130, y = yield_bh_y_crash_b130, shape = "Crash"), color = "blue",size = 2) +
+  geom_point(aes(x = ssb_bh_x_msy, y = yield_bh_y_msy, shape = "MSY"), color = "black",size = 2) +
+  geom_point(aes(x = ssb_bh_x_virgin, y = yield_bh_y_virgin, shape = "Virgin"), color = "black",size = 2) +
+  geom_point(aes(x = ssb_bh_x_crash, y = yield_bh_y_crash, shape = "Crash"), color = "black",size = 2) +
+  scale_color_manual(name = "Model", values = colores) +
+  scale_shape_manual(name = "RPs",values = c("MSY" = 2, "Virgin" = 1, "Crash" = 7)) +
+  labs(x = "SSB", y = "yield", title = "yield vs SSB")+
+  theme(legend.position = "none")
+
+BH5
+BH6
+
+# ssb yield plot RICKER
+
+RIC5 <- ggplot() +
+  geom_line(data = RIC.df.ssb.yield.a, aes(x = V1, y = V2, color = "Base"),  linewidth = 1) +
+  geom_line(data = RIC.df.ssb.yield.a, aes(x = V3, y = V4, color = "a * 0.70"),  linewidth = 1) +
+  geom_line(data = RIC.df.ssb.yield.a, aes(x = V5, y = V6, color = "a * 1.30"),  linewidth = 1) +
+  geom_point(aes(x = ssb_ric_x_msy_a070, y = yield_ric_y_msy_a070, shape = "MSY"), color = "orange",size = 2) +
+  geom_point(aes(x = ssb_ric_x_virgin_a070, y = yield_ric_y_virgin_a070, shape = "Virgin"), color = "orange",size = 2) +
+  geom_point(aes(x = ssb_ric_x_crash_a070, y = yield_ric_y_crash_a070, shape = "Crash"), color = "orange",size = 2) +
+  geom_point(aes(x = ssb_ric_x_msy_a130, y = yield_ric_y_msy_a130, shape = "MSY"), color = "red",size = 2) +
+  geom_point(aes(x = ssb_ric_x_virgin_a130, y = yield_ric_y_virgin_a130, shape = "Virgin"), color = "red",size = 2) +
+  geom_point(aes(x = ssb_ric_x_crash_a130, y = yield_ric_y_crash_a130, shape = "Crash"), color = "red",size = 2) +
+  geom_point(aes(x = ssb_ric_x_msy, y = yield_ric_y_msy, shape = "MSY"), color = "black",size = 2) +
+  geom_point(aes(x = ssb_ric_x_virgin, y = yield_ric_y_virgin, shape = "Virgin"), color = "black",size = 2) +
+  geom_point(aes(x = ssb_ric_x_crash, y = yield_ric_y_crash, shape = "Crash"), color = "black",size = 2) +
+  scale_color_manual(name = "Model", values = colores) +
+  scale_shape_manual(name = "RPs",values = c("MSY" = 2, "Virgin" = 1, "Crash" = 7)) +
+  labs(x = "SSB", y = "yield", title = "yield vs SSB")+
+  theme(legend.position = "none")
+
+RIC6 <- ggplot() +
+  geom_line(data = RIC.df.ssb.yield.b, aes(x = V1, y = V2, color = "Base"),  linewidth = 1) +
+  geom_line(data = RIC.df.ssb.yield.b, aes(x = V3, y = V4, color = "b * 0.70"),  linewidth = 1) +
+  geom_line(data = RIC.df.ssb.yield.b, aes(x = V5, y = V6, color = "b * 1.30"),  linewidth = 1) +
+  geom_point(aes(x = ssb_ric_x_msy_b070, y = yield_ric_y_msy_b070, shape = "MSY"), color = "green",size = 2) +
+  geom_point(aes(x = ssb_ric_x_virgin_b070, y = yield_ric_y_virgin_b070, shape = "Virgin"), color = "green",size = 2) +
+  geom_point(aes(x = ssb_ric_x_crash_b070, y = yield_ric_y_crash_b070, shape = "Crash"), color = "green",size = 2) +
+  geom_point(aes(x = ssb_ric_x_msy_b130, y = yield_ric_y_msy_b130, shape = "MSY"), color = "blue",size = 2) +
+  geom_point(aes(x = ssb_ric_x_virgin_b130, y = yield_ric_y_virgin_b130, shape = "Virgin"), color = "blue",size = 2) +
+  geom_point(aes(x = ssb_ric_x_crash_b130, y = yield_ric_y_crash_b130, shape = "Crash"), color = "blue",size = 2) +
+  geom_point(aes(x = ssb_ric_x_msy, y = yield_ric_y_msy, shape = "MSY"), color = "black",size = 2) +
+  geom_point(aes(x = ssb_ric_x_virgin, y = yield_ric_y_virgin, shape = "Virgin"), color = "black",size = 2) +
+  geom_point(aes(x = ssb_ric_x_crash, y = yield_ric_y_crash, shape = "Crash"), color = "black",size = 2) +
+  scale_color_manual(name = "Model", values = colores) +
+  scale_shape_manual(name = "RPs",values = c("MSY" = 2, "Virgin" = 1, "Crash" = 7)) +
+  labs(x = "SSB", y = "yield", title = "yield vs SSB")+
+  theme(legend.position = "none")
+
+RIC5
+RIC6
+
+
+```
+
+#### Recreuitment vs SSB 
+
+```{r}
+### RICKER
+# RICKER Base
+
+ssb_ric_x_virgin=RPs_ric@refpts$virgin[1,4]
+ssb_ric_x_virgin=as.numeric(ssb_ric_x_virgin)
+rec_ric_y_virgin=RPs_ric@refpts$virgin[1,3]
+rec_ric_y_virgin=as.numeric(rec_ric_y_virgin)
+
+ssb_ric_x_msy=RPs_ric@refpts$msy[1,4]
+ssb_ric_x_msy=as.numeric(ssb_ric_x_msy)
+rec_ric_y_msy=RPs_ric@refpts$msy[1,3]
+rec_ric_y_msy=as.numeric(rec_ric_y_msy)
+
+
+ssb_ric_x_crash=RPs_ric@refpts$crash[1,4]
+ssb_ric_x_crash=as.numeric(ssb_ric_x_crash)
+rec_ric_y_crash=RPs_ric@refpts$crash[1,3]
+rec_ric_y_crash=as.numeric(rec_ric_y_crash)
+
+
+# RICKER Parametro a 70%
+
+ssb_ric_x_virgin_a070=RPs_ric_a070@refpts$virgin[1,4]
+ssb_ric_x_virgin_a070=as.numeric(ssb_ric_x_virgin_a070)
+rec_ric_y_virgin_a070=RPs_ric_a070@refpts$virgin[1,3]
+rec_ric_y_virgin_a070=as.numeric(rec_ric_y_virgin_a070)
+
+ssb_ric_x_msy_a070=RPs_ric_a070@refpts$msy[1,4]
+ssb_ric_x_msy_a070=as.numeric(ssb_ric_x_msy_a070)
+rec_ric_y_msy_a070=RPs_ric_a070@refpts$msy[1,3]
+rec_ric_y_msy_a070=as.numeric(rec_ric_y_msy_a070)
+
+
+ssb_ric_x_crash_a070=RPs_ric_a070@refpts$crash[1,4]
+ssb_ric_x_crash_a070=as.numeric(ssb_ric_x_crash_a070)
+rec_ric_y_crash_a070=RPs_ric_a070@refpts$crash[1,3]
+rec_ric_y_crash_a070=as.numeric(rec_ric_y_crash_a070)
+
+# RICKER Parametro a 130%
+
+ssb_ric_x_virgin_a130=RPs_ric_a130@refpts$virgin[1,4]
+ssb_ric_x_virgin_a130=as.numeric(ssb_ric_x_virgin_a130)
+rec_ric_y_virgin_a130=RPs_ric_a130@refpts$virgin[1,3]
+rec_ric_y_virgin_a130=as.numeric(rec_ric_y_virgin_a130)
+
+ssb_ric_x_msy_a130=RPs_ric_a130@refpts$msy[1,4]
+ssb_ric_x_msy_a130=as.numeric(ssb_ric_x_msy_a130)
+rec_ric_y_msy_a130=RPs_ric_a130@refpts$msy[1,3]
+rec_ric_y_msy_a130=as.numeric(rec_ric_y_msy_a130)
+
+
+ssb_ric_x_crash_a130=RPs_ric_a130@refpts$crash[1,4]
+ssb_ric_x_crash_a130=as.numeric(ssb_ric_x_crash_a130)
+rec_ric_y_crash_a130=RPs_ric_a130@refpts$crash[1,3]
+rec_ric_y_crash_a130=as.numeric(rec_ric_y_crash_a130)
+
+# RICKER Parametro b 70%
+
+ssb_ric_x_virgin_b070=RPs_ric_b070@refpts$virgin[1,4]
+ssb_ric_x_virgin_b070=as.numeric(ssb_ric_x_virgin_b070)
+rec_ric_y_virgin_b070=RPs_ric_b070@refpts$virgin[1,3]
+rec_ric_y_virgin_b070=as.numeric(rec_ric_y_virgin_b070)
+
+ssb_ric_x_msy_b070=RPs_ric_b070@refpts$msy[1,4]
+ssb_ric_x_msy_b070=as.numeric(ssb_ric_x_msy_b070)
+rec_ric_y_msy_b070=RPs_ric_b070@refpts$msy[1,3]
+rec_ric_y_msy_b070=as.numeric(rec_ric_y_msy_b070)
+
+
+ssb_ric_x_crash_b070=RPs_ric_b070@refpts$crash[1,4]
+ssb_ric_x_crash_b070=as.numeric(ssb_ric_x_crash_b070)
+rec_ric_y_crash_b070=RPs_ric_b070@refpts$crash[1,3]
+rec_ric_y_crash_b070=as.numeric(rec_ric_y_crash_b070)
+
+# RICKER Parametro b 130%
+
+ssb_ric_x_virgin_b130=RPs_ric_b130@refpts$virgin[1,4]
+ssb_ric_x_virgin_b130=as.numeric(ssb_ric_x_virgin_b130)
+rec_ric_y_virgin_b130=RPs_ric_b130@refpts$virgin[1,3]
+rec_ric_y_virgin_b130=as.numeric(rec_ric_y_virgin_b130)
+
+ssb_ric_x_msy_b130=RPs_ric_b130@refpts$msy[1,4]
+ssb_ric_x_msy_b130=as.numeric(ssb_ric_x_msy_b130)
+rec_ric_y_msy_b130=RPs_ric_b130@refpts$msy[1,3]
+rec_ric_y_msy_b130=as.numeric(rec_ric_y_msy_b130)
+
+
+ssb_ric_x_crash_b130=RPs_ric_b130@refpts$crash[1,4]
+ssb_ric_x_crash_b130=as.numeric(ssb_ric_x_crash_b130)
+rec_ric_y_crash_b130=RPs_ric_b130@refpts$crash[1,3]
+rec_ric_y_crash_b130=as.numeric(rec_ric_y_crash_b130)
+
+
+
+
+# BH ##########################################################################
+
+# BH Base
+
+ssb_bh_x_virgin=RPs_bh@refpts$virgin[1,4]
+ssb_bh_x_virgin=as.numeric(ssb_bh_x_virgin)
+rec_bh_y_virgin=RPs_bh@refpts$virgin[1,3]
+rec_bh_y_virgin=as.numeric(rec_bh_y_virgin)
+
+ssb_bh_x_msy=RPs_bh@refpts$msy[1,4]
+ssb_bh_x_msy=as.numeric(ssb_bh_x_msy)
+rec_bh_y_msy=RPs_bh@refpts$msy[1,3]
+rec_bh_y_msy=as.numeric(rec_bh_y_msy)
+
+
+ssb_bh_x_crash=RPs_bh@refpts$crash[1,4]
+ssb_bh_x_crash=as.numeric(ssb_bh_x_crash)
+rec_bh_y_crash=RPs_bh@refpts$crash[1,3]
+rec_bh_y_crash=as.numeric(rec_bh_y_crash)
+
+
+# BH Parametro a 70%
+
+ssb_bh_x_virgin_a070=RPs_bh_a070@refpts$virgin[1,4]
+ssb_bh_x_virgin_a070=as.numeric(ssb_bh_x_virgin_a070)
+rec_bh_y_virgin_a070=RPs_bh_a070@refpts$virgin[1,3]
+rec_bh_y_virgin_a070=as.numeric(rec_bh_y_virgin_a070)
+
+ssb_bh_x_msy_a070=RPs_bh_a070@refpts$msy[1,4]
+ssb_bh_x_msy_a070=as.numeric(ssb_bh_x_msy_a070)
+rec_bh_y_msy_a070=RPs_bh_a070@refpts$msy[1,3]
+rec_bh_y_msy_a070=as.numeric(rec_bh_y_msy_a070)
+
+
+ssb_bh_x_crash_a070=RPs_bh_a070@refpts$crash[1,4]
+ssb_bh_x_crash_a070=as.numeric(ssb_bh_x_crash_a070)
+rec_bh_y_crash_a070=RPs_bh_a070@refpts$crash[1,3]
+rec_bh_y_crash_a070=as.numeric(rec_bh_y_crash_a070)
+
+# BH Parametro a 130%
+
+ssb_bh_x_virgin_a130=RPs_bh_a130@refpts$virgin[1,4]
+ssb_bh_x_virgin_a130=as.numeric(ssb_bh_x_virgin_a130)
+rec_bh_y_virgin_a130=RPs_bh_a130@refpts$virgin[1,3]
+rec_bh_y_virgin_a130=as.numeric(rec_bh_y_virgin_a130)
+
+ssb_bh_x_msy_a130=RPs_bh_a130@refpts$msy[1,4]
+ssb_bh_x_msy_a130=as.numeric(ssb_bh_x_msy_a130)
+rec_bh_y_msy_a130=RPs_bh_a130@refpts$msy[1,3]
+rec_bh_y_msy_a130=as.numeric(rec_bh_y_msy_a130)
+
+
+ssb_bh_x_crash_a130=RPs_bh_a130@refpts$crash[1,4]
+ssb_bh_x_crash_a130=as.numeric(ssb_bh_x_crash_a130)
+rec_bh_y_crash_a130=RPs_bh_a130@refpts$crash[1,3]
+rec_bh_y_crash_a130=as.numeric(rec_bh_y_crash_a130)
+
+# BH Parametro b 70%
+
+ssb_bh_x_virgin_b070=RPs_bh_b070@refpts$virgin[1,4]
+ssb_bh_x_virgin_b070=as.numeric(ssb_bh_x_virgin_b070)
+rec_bh_y_virgin_b070=RPs_bh_b070@refpts$virgin[1,3]
+rec_bh_y_virgin_b070=as.numeric(rec_bh_y_virgin_b070)
+
+ssb_bh_x_msy_b070=RPs_bh_b070@refpts$msy[1,4]
+ssb_bh_x_msy_b070=as.numeric(ssb_bh_x_msy_b070)
+rec_bh_y_msy_b070=RPs_bh_b070@refpts$msy[1,3]
+rec_bh_y_msy_b070=as.numeric(rec_bh_y_msy_b070)
+
+
+ssb_bh_x_crash_b070=RPs_bh_b070@refpts$crash[1,4]
+ssb_bh_x_crash_b070=as.numeric(ssb_bh_x_crash_b070)
+rec_bh_y_crash_b070=RPs_bh_b070@refpts$crash[1,3]
+rec_bh_y_crash_b070=as.numeric(rec_bh_y_crash_b070)
+
+# BH Parametro b 130%
+
+ssb_bh_x_virgin_b130=RPs_bh_b130@refpts$virgin[1,4]
+ssb_bh_x_virgin_b130=as.numeric(ssb_bh_x_virgin_b130)
+rec_bh_y_virgin_b130=RPs_bh_b130@refpts$virgin[1,3]
+rec_bh_y_virgin_b130=as.numeric(rec_bh_y_virgin_b130)
+
+ssb_bh_x_msy_b130=RPs_bh_b130@refpts$msy[1,4]
+ssb_bh_x_msy_b130=as.numeric(ssb_bh_x_msy_b130)
+rec_bh_y_msy_b130=RPs_bh_b130@refpts$msy[1,3]
+rec_bh_y_msy_b130=as.numeric(rec_bh_y_msy_b130)
+
+
+ssb_bh_x_crash_b130=RPs_bh_b130@refpts$crash[1,4]
+ssb_bh_x_crash_b130=as.numeric(ssb_bh_x_crash_b130)
+rec_bh_y_crash_b130=RPs_bh_b130@refpts$crash[1,3]
+rec_bh_y_crash_b130=as.numeric(rec_bh_y_crash_b130)
+
+
+# ssb rec plot BH
+BH7 <- ggplot() +
+  geom_line(data = BH.df.ssb.rec.a, aes(x = V1, y = V2, color = "Base"),  linewidth = 1) +
+  geom_line(data = BH.df.ssb.rec.a, aes(x = V3, y = V4, color = "a * 0.70"),  linewidth = 1) +
+  geom_line(data = BH.df.ssb.rec.a, aes(x = V5, y = V6, color = "a * 1.30"),  linewidth = 1) +
+  geom_point(aes(x = ssb_bh_x_msy_a070, y = rec_bh_y_msy_a070, shape = "MSY"), color = "orange",size = 2) +
+  geom_point(aes(x = ssb_bh_x_virgin_a070, y = rec_bh_y_virgin_a070, shape = "Virgin"), color = "orange",size = 2) +
+  geom_point(aes(x = ssb_bh_x_crash_a070, y = rec_bh_y_crash_a070, shape = "Crash"), color = "orange",size = 2) +
+  geom_point(aes(x = ssb_bh_x_msy_a130, y = rec_bh_y_msy_a130, shape = "MSY"), color = "red",size = 2) +
+  geom_point(aes(x = ssb_bh_x_virgin_a130, y = rec_bh_y_virgin_a130, shape = "Virgin"), color = "red",size = 2) +
+  geom_point(aes(x = ssb_bh_x_crash_a130, y = rec_bh_y_crash_a130, shape = "Crash"), color = "red",size = 2) +
+  geom_point(aes(x = ssb_bh_x_msy, y = rec_bh_y_msy, shape = "MSY"), color = "black",size = 2) +
+  geom_point(aes(x = ssb_bh_x_virgin, y = rec_bh_y_virgin, shape = "Virgin"), color = "black",size = 2) +
+  geom_point(aes(x = ssb_bh_x_crash, y = rec_bh_y_crash, shape = "Crash"), color = "black",size = 2) +
+  scale_color_manual(name = "Model", values = colores) +
+  scale_shape_manual(name = "RPs",values = c("MSY" = 2, "Virgin" = 1, "Crash" = 7)) +
+  labs(x = "SSB", y = "Recruitment", title = "Recruitment vs. SSB ")+
+  theme(legend.position = "none")
+
+BH7
+  
+BH8 <- ggplot() +
+  geom_line(data = BH.df.ssb.rec.b, aes(x = V1, y = V2, color = "Base"),  linewidth = 1) +
+  geom_line(data = BH.df.ssb.rec.b, aes(x = V3, y = V4, color = "b * 0.70"),  linewidth = 1) +
+  geom_line(data = BH.df.ssb.rec.b, aes(x = V5, y = V6, color = "b * 1.30"),  linewidth = 1) +
+  geom_point(aes(x = ssb_bh_x_msy_b070, y = rec_bh_y_msy_b070, shape = "MSY"), color = "green",size = 2) +
+  geom_point(aes(x = ssb_bh_x_virgin_b070, y = rec_bh_y_virgin_b070, shape = "Virgin"), color = "green",size = 2) +
+  geom_point(aes(x = ssb_bh_x_crash_b070, y = rec_bh_y_crash_b070, shape = "Crash"), color = "green",size = 2) +
+  geom_point(aes(x = ssb_bh_x_msy_b130, y = rec_bh_y_msy_b130, shape = "MSY"), color = "blue",size = 2) +
+  geom_point(aes(x = ssb_bh_x_virgin_b130, y = rec_bh_y_virgin_b130, shape = "Virgin"), color = "blue",size = 2) +
+  geom_point(aes(x = ssb_bh_x_crash_b130, y = rec_bh_y_crash_b130, shape = "Crash"), color = "blue",size = 2) +
+  geom_point(aes(x = ssb_bh_x_msy, y = rec_bh_y_msy, shape = "MSY"), color = "black",size = 2) +
+  geom_point(aes(x = ssb_bh_x_virgin, y = rec_bh_y_virgin, shape = "Virgin"), color = "black",size = 2) +
+  geom_point(aes(x = ssb_bh_x_crash, y = rec_bh_y_crash, shape = "Crash"), color = "black",size = 2) +
+  scale_color_manual(name = "Model", values = colores) +
+  scale_shape_manual(name = "RPs",values = c("MSY" = 2, "Virgin" = 1, "Crash" = 7)) +
+  labs(x = "SSB", y = "Recruitment", title = "Recruitment vs. SSB ")+
+  theme(legend.position = "none")
+
+BH8
+
+
+
+
+
+# ssb rec plot RICKER
+
+RIC7 <- ggplot() +
+  geom_line(data = RIC.df.ssb.rec.a, aes(x = V1, y = V2, color = "Base"),  linewidth = 1) +
+  geom_line(data = RIC.df.ssb.rec.a, aes(x = V3, y = V4, color = "a * 0.70"),  linewidth = 1) +
+  geom_line(data = RIC.df.ssb.rec.a, aes(x = V5, y = V6, color = "a * 1.30"),  linewidth = 1) +
+  geom_point(aes(x = ssb_ric_x_msy_a070, y = rec_ric_y_msy_a070, shape = "MSY"), color = "orange",size = 2) +
+  geom_point(aes(x = ssb_ric_x_virgin_a070, y = rec_ric_y_virgin_a070, shape = "Virgin"), color = "orange",size = 2) +
+  geom_point(aes(x = ssb_ric_x_crash_a070, y = rec_ric_y_crash_a070, shape = "Crash"), color = "orange",size = 2) +
+  geom_point(aes(x = ssb_ric_x_msy_a130, y = rec_ric_y_msy_a130, shape = "MSY"), color = "red",size = 2) +
+  geom_point(aes(x = ssb_ric_x_virgin_a130, y = rec_ric_y_virgin_a130, shape = "Virgin"), color = "red",size = 2) +
+  geom_point(aes(x = ssb_ric_x_crash_a130, y = rec_ric_y_crash_a130, shape = "Crash"), color = "red",size = 2) +
+  geom_point(aes(x = ssb_ric_x_msy, y = rec_ric_y_msy, shape = "MSY"), color = "black",size = 2) +
+  geom_point(aes(x = ssb_ric_x_virgin, y = rec_ric_y_virgin, shape = "Virgin"), color = "black",size = 2) +
+  geom_point(aes(x = ssb_ric_x_crash, y = rec_ric_y_crash, shape = "Crash"), color = "black",size = 2) +
+  scale_color_manual(name = "Model", values = colores) +
+  scale_shape_manual(name = "RPs", values = c("MSY" = 2, "Virgin" = 1, "Crash" = 7)) +
+  labs(x = "SSB", y = "Recruitment", title = "Recruitment vs. SSB ")+
+  theme(legend.position = "none")
+RIC7
+
+
+
+RIC8 <- ggplot() +
+  geom_line(data = RIC.df.ssb.rec.b, aes(x = V1, y = V2, color = "Base"),  linewidth = 1) +
+  geom_line(data = RIC.df.ssb.rec.b, aes(x = V3, y = V4, color = "b * 0.70"),  linewidth = 1) +
+  geom_line(data = RIC.df.ssb.rec.b, aes(x = V5, y = V6, color = "b * 1.30"),  linewidth = 1) +
+  geom_point(aes(x = ssb_ric_x_msy_b070, y = rec_ric_y_msy_b070, shape = "MSY"), color = "green",size = 2) +
+  geom_point(aes(x = ssb_ric_x_virgin_b070, y = rec_ric_y_virgin_b070, shape = "Virgin"), color = "green",size = 2) +
+  geom_point(aes(x = ssb_ric_x_crash_b070, y = rec_ric_y_crash_b070, shape = "Crash"), color = "green",size = 2) +
+  geom_point(aes(x = ssb_ric_x_msy_b130, y = rec_ric_y_msy_b130, shape = "MSY"), color = "blue",size = 2) +
+  geom_point(aes(x = ssb_ric_x_virgin_b130, y = rec_ric_y_virgin_b130, shape = "Virgin"), color = "blue",size = 2) +
+  geom_point(aes(x = ssb_ric_x_crash_b130, y = rec_ric_y_crash_b130, shape = "Crash"), color = "blue",size = 2) +
+  geom_point(aes(x = ssb_ric_x_msy, y = rec_ric_y_msy, shape = "MSY"), color = "black",size = 2) +
+  geom_point(aes(x = ssb_ric_x_virgin, y = rec_ric_y_virgin, shape = "Virgin"), color = "black",size = 2) +
+  geom_point(aes(x = ssb_ric_x_crash, y = rec_ric_y_crash, shape = "Crash"), color = "black",size = 2) +
+  scale_color_manual(name = "Model", values = colores) +
+  scale_shape_manual(name = "RPs", values = c("MSY" = 2, "Virgin" = 1, "Crash" = 7)) +
+  labs(x = "SSB", y = "Recruitment", title = "Recruitment vs. SSB ")+
+  theme(legend.position = "none")
+RIC8
+```
+
+
+### Paneles
+
+```{r}
+
+
+# Gráficos para Beverton-Holt Fbar vs SSB
+BH_plots_a <- list(BH1,BH3,BH5,BH7)
+BH_plots_b <- list(BH2,BH4,BH6,BH8)
+
+# Gráficos para Ricker Fbar vs SSB
+RIC_plots_a <- list(RIC1,RIC3, RIC5,RIC7)
+RIC_plots_b <-list(RIC2,RIC4,RIC6,RIC8)
+
+# Combinar los gráficos de BH en un panel para parámetro a y otro para parámetro b
+BH_panel_a <- plot_grid(plotlist = BH_plots_a, align = "hv") +
+  theme_void()
+
+BH_panel_b <- plot_grid(plotlist = BH_plots_b, align = "hv") +
+  theme_void()
+
+# Combinar los gráficos de RIC en un panel
+RIC_panel_a <- plot_grid(plotlist = RIC_plots_a, align = "hv") +
+  theme_void()
+
+RIC_panel_b <- plot_grid(plotlist = RIC_plots_b, align = "hv") +
+  theme_void()
+
+
+
+```
+
+```{r}
+# Mostrar los paneles
+
+print(BH_panel_a)
+print(BH_panel_b)
+print(RIC_panel_a)
+print(RIC_panel_b)
+
+
+# Ruta de la carpeta para guardar el plot
+output_dir <- "C:/Users/Tito/Documents/Tito CDS/MTE/TFM IEO/Case Studies/Imagenes"
+
+# Combinamos la carpeta con el nombre del archivo
+output_file <- file.path(output_dir, "BH_panel_a.png")
+
+png(output_file, width = 1800, height = 1400, res = 300)
+print(BH_panel_a)
+dev.off()
+
+output_file <- file.path(output_dir, "BH_panel_b.png")
+png(output_file, width = 1800, height = 1400, res = 300)
+print(BH_panel_b)
+dev.off()
+
+output_file <- file.path(output_dir, "RIC_panel_a.png")
+png(output_file, width = 1800, height = 1400, res = 300)
+print(RIC_panel_a)
+dev.off()
+
+output_file <- file.path(output_dir, "RIC_panel_b.png")
+png(output_file, width = 1800, height = 1400, res = 300)
+print(RIC_panel_b)
+dev.off()
+
+```
+

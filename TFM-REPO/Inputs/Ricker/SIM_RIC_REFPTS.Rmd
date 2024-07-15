@@ -1,0 +1,677 @@
+---
+title: "Ejercicio Stock-Recruitment Reference Points Ricker CV02"
+author: "Alberto Couce"
+date: "`r Sys.Date()`"
+output:
+  html_document: 
+    toc: true
+    toc_float: true
+    number_sections: true
+    theme: flatly
+    highlight: zenburn
+params:
+  n_iter: 
+    label: "Number of Iterations"
+    value: 2500
+    input: slider
+    min: 1
+    max: 2500
+    step: 1
+  cv: 
+    label: "Coefficient of Variation"
+    value: 0.2
+    input: slider
+    min: 0.01
+    max: 1
+  model_type: 
+    label: "Model Type"
+    value: "Ric"
+    input: select
+    choices: ["BH","Ric"]
+---
+# Ejercicio simulación de SR y Reference points 
+
+### Introducción y descripción de los objetivos.
+
+Ejercicio para simular relaciones SR con diferente número de iteraciones y diferentes valores de coeficientes de variación.
+
+```{r PATH  & Setup,echo=FALSE,include=FALSE}
+# Packages ---------------------------------------------------------------------
+library(tidyr)
+library(dplyr)
+library(ggplot2)
+library(cowplot)
+library(FLasher) 
+library(mse)
+library(LBSPR)
+library(FLSRTMB)
+library(FLBRP)
+library(prettydoc)
+library(patchwork)
+library(gridExtra)
+library(FLCore)
+library(ggplotFL)
+library(viridis)
+
+
+setwd("~/Tito CDS/MTE/TFM IEO/Case Studies")
+dir<-getwd()
+PATH<-paste0(dir, "/data/hake.RData")
+# Sustituir por dir_RData<-paste0(dir, "/data/wgbie2023_sdata_FLSR8c9a_FLRobjs_estimated.RData")
+load(PATH)
+```
+
+Se recomienda compilar el html mediante knit > "knit with parameters" y elegir los parámetros como el modelo las iteraciones o el CV para poder generar el informe adecuado.
+
+```{r Confirmación de parámetros}
+recy <- 1982:2022
+print(paste0("El número de iteraciones de este caso es de ",params$n_iter))
+print(paste0("El Coeficiente de variación de este caso es de ",params$cv))
+print(paste0("El modelo utilizado en este caso es ",params$model_type))
+print(paste0("La longitud de la serie temporal del stock es de ",length(recy), " años"))
+```
+
+## Ajuste inicial
+Realizamos un ajuste inicial según el modelo seleccionado.
+
+```{r Ajuste inicial}
+recy <- 1982:2022
+stk<-window(stk, start = recy[1], end = recy[length(recy)])
+
+  if (params$model_type == "BH") {
+    data_FLSR <- as.FLSR(stk)
+    model(data_FLSR) <- bevholt()
+    stk_fit_FLSR <- fmle(data_FLSR)
+  } else if (params$model_type == "Ric") {
+    data_FLSR <- as.FLSR(stk)
+    model(data_FLSR) <- ricker()
+    stk_fit_FLSR <- fmle(data_FLSR)
+  } else {
+    stop("Model Type must be 'BH' or 'Ric'")
+  }
+
+```
+
+### Resumen del ajuste inicial
+
+```{r Summary del modelo}
+summary(stk_fit_FLSR)
+```
+
+### Introducción del variabilidad en los residuos y control de los parámetros de simulación.
+
+```{r Variabilidad en los residuos y control de simulación}
+
+fs<-as.vector(fbar(stk))
+stk_sr <- FLSR(params = params(stk_fit_FLSR), model = model(stk_fit_FLSR))
+stk <- propagate(stk, params$n_iter)
+
+set.seed(0)
+m<-1
+
+v<-(params$cv*m)^2
+mu<-log(m^2/sqrt(m^2+v))
+sigma<-sqrt(log(v/m^2+1))
+residuals(stk_sr) <- rlnoise(dim(stk)[6], rec(stk) %=% mu,
+                             sd = sigma, b = 0)
+plot(stk)
+
+
+ctrl <- fwdControl(data.frame(year = (stk@range["minyear"]+1):stk@range["maxyear"], quant = "f", value =fs[-1])) 
+stk_stf <- FLasher::fwd(stk, control=ctrl, sr = stk_sr,
+                        deviances = residuals(stk_sr),
+                        #sr.residuals.mult = TRUE,
+                        maxF = 5)
+p_stf<-plot(stk_stf)
+p_stf
+
+# Serie de Reclutamiento
+p_stf_rec<-plot(rec(stk_stf))
+p_stf_rec
+# Serie de SSB
+p_stf_ssb<-plot(ssb(stk_stf))
+p_stf_ssb
+```
+
+
+```{r PATH imagenes plotseries}
+# Ruta de la carpeta para guardar el plot
+output_dir <- "C:/Users/Tito/Documents/Tito CDS/MTE/TFM IEO/Case Studies/Imagenes/RICsim"
+
+# Combinamos la carpeta con el nombre del archivo
+output_file <- file.path(output_dir, paste0(params$n_iter,"_",params$cv,"_",params$model_type,"_plot_series.png"))
+                         
+# Guardar el gráfico en un archivo png
+png(output_file, width = 1800, height = 1400, res = 300)
+p_stf
+dev.off()
+```
+
+```{r PATH imagenes plotseries_REC}
+# Ruta de la carpeta para guardar el plot
+output_dir <- "C:/Users/Tito/Documents/Tito CDS/MTE/TFM IEO/Case Studies/Imagenes/RICsim"
+
+# Combinamos la carpeta con el nombre del archivo
+output_file <- file.path(output_dir, paste0(params$n_iter,"_",params$cv,"_",params$model_type,"_plot_series_REC.png"))
+                         
+# Guardar el gráfico en un archivo png
+png(output_file, width = 1800, height = 1400, res = 300)
+p_stf_rec
+dev.off()
+```
+
+```{r PATH imagenes plotseries_SSB}
+# Ruta de la carpeta para guardar el plot
+output_dir <- "C:/Users/Tito/Documents/Tito CDS/MTE/TFM IEO/Case Studies/Imagenes/RICsim"
+
+# Combinamos la carpeta con el nombre del archivo
+output_file <- file.path(output_dir, paste0(params$n_iter,"_",params$cv,"_",params$model_type,"_plot_series_SSB.png"))
+                         
+# Guardar el gráfico en un archivo png
+png(output_file, width = 1800, height = 1400, res = 300)
+p_stf_ssb
+dev.off()
+```
+
+El objeto resultante con la variabilidad de los residuos introducida bajo control es "stk_stf" en este caso 2500 iteraciones con una variabilidad de 0,6 (CV = 0.6) como caso extremo.
+
+A continuación volvemos a ajustar todas las iteraciones según Beverton - Holt y extraemos los valores de los parámetros a y b
+
+```{r Ajuste Iteraciones,include=FALSE}
+
+data_FLSR <-as.FLSR(stk_stf)
+
+  if (params$model_type == "BH") {
+    data_FLSR <- as.FLSR(stk_stf)
+    model(data_FLSR) <- bevholt()
+    system.time(stk_fit_FLSR <- fmle(data_FLSR))
+  } else if (params$model_type == "Ric") {
+    data_FLSR <- as.FLSR(stk_stf)
+    model(data_FLSR) <- ricker()
+    system.time(stk_fit_FLSR <- fmle(data_FLSR))
+  } else {
+    stop("Model Type must be 'BH' or 'Ric'")
+  }
+
+Max<-max((ssb(stk_fit_FLSR)))*2.5
+ssb_range <- seq( 0, Max, length.out = 25000)
+a<-as.numeric(stk_fit_FLSR@params[1])
+b<-as.numeric(stk_fit_FLSR@params[2])
+
+# Detectamos en que posiciones de a y b tenemos los NA's
+# Es decir, que iteraciones han fallado
+
+inda=which(is.na(a))
+
+indb=which(is.na(b))
+
+# Una vez identificadas las iteracciones problemáticas calculamos la SR para ellas
+# de forma independiente
+
+
+stk_fit_FLSR_aux<-list()
+
+if(length(inda)>0){
+
+for (i in 1:length(inda)){
+if (params$model_type == "BH") {
+  data_FLSR_aux <- as.FLSR(stk_stf[,,,,,inda[i]])
+  model(data_FLSR_aux) <- bevholt()
+  system.time(stk_fit_FLSR_aux[[i]] <- fmle(data_FLSR_aux))
+} else if (params$model_type == "Ric") {
+  data_FLSR_aux <- as.FLSR(stk_stf[,,,,,inda[i]])
+  model(data_FLSR_aux) <- ricker()
+  system.time(stk_fit_FLSR_aux[[i]] <- fmle(data_FLSR_aux))
+} else {
+  stop("Model Type must be 'BH' or 'Ric'")
+}
+  #Substituimos con los valores buenos
+  a[inda[i]]<-stk_fit_FLSR_aux[[i]]@params[1]
+  b[inda[[i]]]<-stk_fit_FLSR_aux[[i]]@params[2]
+}
+}
+data<-data.frame(SSB=0, REC=0,ITER=0)
+  for (i in 1:params$n_iter) {
+    if (params$model_type == "BH") {
+      rec_range <- (ssb_range * a[i]) / (ssb_range + b[i])
+    } else if (params$model_type == "Ric") {
+      rec_range <- (ssb_range * a[i]) * exp(-b[i] * ssb_range)
+    } else {
+      stop("model_type debe ser 'BH' o 'Ric'")
+    }
+    aux <- data.frame(SSB = ssb_range, REC = rec_range, ITER = i)
+    data <- rbind(data, aux)
+  }
+
+data<-data[-1,]
+```
+
+### Plot con los IC
+
+```{r Plot SR}
+alpha = 0.05
+summary_df <- data %>%
+  group_by(SSB) %>%
+  summarise(
+    mean_REC = mean(REC),
+    lower_quantile = quantile(REC, (alpha/2)),
+    upper_quantile = quantile(REC, 1-(alpha/2))
+  )
+
+
+p_SR<-ggplot(data = summary_df, aes(x = SSB)) +
+  geom_line(aes(y = mean_REC), color = "blue") +
+  geom_ribbon(aes(ymin = lower_quantile, ymax = upper_quantile), alpha = 0.2) +
+  labs(title = "Mean and quantiles",
+       x = "SSB",
+       y = "REC") +
+  theme_minimal()
+
+p_SR
+```
+
+```{r PATH imagenes plotSR}
+# Ruta de la carpeta para guardar el plot
+output_dir <- "C:/Users/Tito/Documents/Tito CDS/MTE/TFM IEO/Case Studies/Imagenes/RICsim"
+
+# Combinamos la carpeta con el nombre del archivo
+output_file <- file.path(output_dir, paste0(params$n_iter,"_",params$cv,"_",params$model_type,"_plot_SR.png"))
+                         
+# Guardar el gráfico en un archivo png
+png(output_file, width = 1800, height = 1400, res = 300)
+p_SR
+dev.off()
+```
+
+### Boxplot de los parámetros a y b
+
+Hacemos boxplots para los parámetros a y b
+
+```{r Función boxplot_param}
+# Función boxplot_param con ajuste de etiquetas en el eje y
+boxplot_param <- function(param) {
+  aux_params_df <- data.frame(a, b)
+  param_name <- deparse(substitute(param))  # Obtener el nombre de la variable
+  
+  # Crear el gráfico con ggplot2
+  p <- aux_params_df %>%
+    ggplot(aes(y = !!sym(param_name))) +  # Usar !!sym(param_name) para evaluar el nombre de la columna en aes
+    geom_boxplot(outliers = TRUE) +
+    labs(
+      y = switch(param_name,
+                 a = expression("Parámetro a"),
+                 b = expression("Parámetro b")),
+      x = NULL
+    )
+  
+  return(p)
+}
+
+# Ejemplo de uso de la función
+pa <- boxplot_param(a)
+pb <- boxplot_param(b)
+
+# Ajustar los temas de los gráficos
+pa <- pa + theme(axis.text.x = element_blank())
+pb <- pb + theme(axis.text.x = element_blank())
+
+# Combinar los gráficos
+p_grid <- gridExtra::grid.arrange(pa, pb, ncol = 2)
+
+p_grid
+
+```
+
+```{r PATH BOXPLOT ab}
+# Ruta de la carpeta para guardar el plot
+output_dir <- "C:/Users/Tito/Documents/Tito CDS/MTE/TFM IEO/Case Studies/Imagenes/RICsim"
+
+# Combinamos la carpeta con el nombre del archivo
+output_file <- file.path(output_dir, paste0(params$n_iter,"_",params$cv,"_",params$model_type,"_Boxplot_parametros.png"))
+
+# Guardar el gráfico en un archivo png
+ png(output_file, width = 1800, height = 1400, res = 300)
+ p_grid <- gridExtra::grid.arrange(pa, pb, ncol = 2)
+ dev.off()
+```
+
+
+## Puntos de referencia.
+
+A continuación evaluamos los puntos de referencia.
+
+```{r Puntos de referencia Setup}
+system.time(
+RPs_stf<-brp(FLBRP(stk_stf, sr = stk_fit_FLSR))
+)
+# RPs_stf@refpts
+#plot(RPs_stf)
+
+# ssb
+ssb_virgin<-as.numeric(RPs_stf@refpts["virgin","ssb"])
+ssb_msy<-as.numeric(RPs_stf@refpts["msy","ssb"])
+f_msy <- as.numeric(RPs_stf@refpts["msy","harvest"])
+f_msy_yield <- as.numeric(RPs_stf@refpts["msy","yield"])
+Fcrash <- as.numeric(RPs_stf@refpts["crash","harvest"])
+
+RPs_stf_aux<-list()
+if(length(inda)>0){
+for (i in 1:length(inda)){
+
+RPs_stf_aux[[i]]<-brp(FLBRP(stk_stf[,,,,,inda[i]], sr = stk_fit_FLSR_aux[[i]]))
+
+ssb_virgin[inda[i]]<-as.numeric(RPs_stf_aux[[i]]@refpts["virgin","ssb"])
+ssb_msy[inda[i]]<-as.numeric(RPs_stf_aux[[i]]@refpts["msy","ssb"])
+f_msy[inda[i]] <- as.numeric(RPs_stf_aux[[i]]@refpts["msy","harvest"])
+f_msy_yield[inda[i]] <- as.numeric(RPs_stf_aux[[i]]@refpts["msy","yield"])
+Fcrash[inda[i]] <- as.numeric(RPs_stf_aux[[i]]@refpts["crash","harvest"])
+
+}}
+```
+
+
+```{r Puntos de referencia Setup 1}
+### Reference Points SSB
+
+data_rps<-data.frame(SSBvirgin=ssb_virgin,
+                         SSBmsy=ssb_msy,
+                         Fcrash=Fcrash,
+                         Fmsy = f_msy,
+                         MSY = f_msy_yield,
+                         iter=1:params$n_iter)
+
+df_long_ssb <- data_rps %>%
+  pivot_longer(cols = c(SSBvirgin, SSBmsy), 
+               names_to = "RPs", 
+               values_to = "SSB")
+
+
+
+df_long_f <- data_rps %>%
+  pivot_longer(cols = c(Fcrash, Fmsy), 
+               names_to = "RPs", 
+               values_to = "F")
+
+
+
+df_long_yield <- data_rps %>%
+  pivot_longer(cols = MSY, 
+               names_to = "RPs", 
+               values_to = "Yield")
+
+
+```
+
+
+
+```{r Puntos de referencia individualmente SSB}
+df_long_msy<-subset(df_long_ssb,df_long_ssb$RPs=="SSBmsy")
+
+p1 <- ggplot(data = df_long_msy, aes(x = RPs, y = SSB)) +
+geom_boxplot() +
+theme_minimal()
+p1 <- p1 + theme(axis.title.y = element_blank(),axis.title.x = element_blank())
+
+
+df_long_virgin<-subset(df_long_ssb,df_long_ssb$RPs=="SSBvirgin")
+
+p2 <- ggplot(data = df_long_virgin, aes(x = RPs, y = SSB)) +
+geom_boxplot() +
+theme_minimal()
+p2 <- p2 + theme(axis.title.y = element_blank(),axis.title.x = element_blank())
+
+
+df_long_crash<-subset(df_long_f,df_long_f$RPs=="Fcrash")
+
+p3 <- ggplot(data = df_long_crash, aes(x = RPs, y = F)) +
+geom_boxplot() +
+theme_minimal()
+p3 <- p3 + theme(axis.title.y = element_blank(),axis.title.x = element_blank())
+
+
+df_long_Fmsy<-subset(df_long_f,df_long_f$RPs=="Fmsy")
+
+p4 <- ggplot(data = df_long_Fmsy, aes(x = RPs, y = F)) +
+geom_boxplot() +
+theme_minimal()
+p4 <- p4 + theme(axis.title.y = element_blank(),axis.title.x = element_blank())
+
+
+df_long_yield<-subset(df_long_yield,df_long_yield$RPs=="MSY")
+
+p5 <- ggplot(data = df_long_yield, aes(x = RPs, y = Yield)) +
+geom_boxplot() +
+theme_minimal()
+
+p5 <- p5 + theme(axis.title.y = element_blank(),axis.title.x = element_blank())
+
+
+
+# grid.arrange(p1, p2, p3, p4, p5, nrow = 1, ncol = 5)
+
+# Plot combinado con título general
+
+plot_combinado <- (p1 | p2 | p3 | p4 | p5) + 
+  plot_annotation(title = "Puntos de Referencia (Overview)")
+
+# Display the combined plot
+plot_combinado
+
+```
+
+```{r PATH Boxplot 2}
+# Ruta de la carpeta para guardar el plot
+ output_dir <- "C:/Users/Tito/Documents/Tito CDS/MTE/TFM IEO/Case Studies/Imagenes/RICsim"
+ 
+# Combinamos la carpeta con el nombre del archivo
+ output_file <- file.path(output_dir, paste0(params$n_iter,"_",params$cv,"_",params$model_type,"_Boxplot_RPs.png"))
+ 
+ png(output_file, width = 1800, height = 1400, res = 300)
+ print(plot_combinado)
+ dev.off()
+```
+
+
+## Convergencia de los puntos de referencia
+
+### Función para la estimación de la convergencia de los puntos de referencia.
+
+```{r Función para la estimación de la convergencia}
+
+convergence_plot <- function(dat, title) {
+  desc=""; fname="convPlot"; step=1; upPerc=0.95; lowPerc=0.05
+  dat <- as.numeric(dat)
+  datLen <- length(dat)
+  datGrid <- seq(step, datLen, by=step)
+  cumMean <- unlist(lapply(datGrid, function (x) mean(dat[1:x])))
+  cumMedian <- unlist(lapply(datGrid, function (x) median(dat[1:x])))
+  cumSD <- unlist(lapply(datGrid, function (x) sd(dat[1:x])))
+  cumCV <- cumSD/cumMean
+  cumUpper <- unlist(lapply(datGrid, function (x) quantile(dat[1:x], probs=upPerc)))
+  cumLow <- unlist(lapply(datGrid, function (x) quantile(dat[1:x], probs=lowPerc)))
+  cumDF <- data.frame(cumMean, cumLow, cumSD, cumMedian, cumUpper, cumCV)
+  names(cumDF) <- c(" mean", paste0("perc", lowPerc), " sd", " median", paste0("perc", upPerc), " CV")
+  
+  ## Plots
+  par(mfcol=c(3,2), oma=c(0,0,2,0))
+  for (i in names(cumDF)) {
+    y = cumDF[, i]
+    conv <- y[length(y)]
+    plot(datGrid, y, xlab="iters", ylab=i, type='l', lwd=2,
+         ylim=c(conv*0.95, conv*1.05),
+         main=title)
+    abline(h=conv*0.975, lty=1, lwd=1, col=2)
+    abline(h=conv*1.025, lty=1, lwd=1, col=2)
+    text(x=datLen, y=conv*1.03, labels="5%", cex=0.6)
+    abline(h=conv*0.995, lty=2, lwd=.5, col=2)
+    abline(h=conv*1.005, lty=2, lwd=.5, col=2)
+    text(x=datLen, y=conv*1.008, labels="1%", cex=0.6)
+  }
+  par(mfrow=c(1,1))
+  
+  # Capturar el gráfico en una variable
+  plot_capture <- recordPlot()
+  
+  return(list(cumDF=cumDF, plot_capture=plot_capture))
+}
+
+```
+
+
+
+### Cálculo de la convergencia para los puntos de referencia. 
+
+En este apartado se obseva cuanto tardan en converger la media,la mediana, los cuantiles del reclutamiento para el 5% y el 1%, la desviación típica y el coeficiente de variación (CV) de cada uno de los puntos de referencia propuestos.
+
+#### $SSB_{msy}$
+
+```{r Convergencia en los puntos de referencia SSBmsy}
+result<-convergence_plot(dat = ssb_msy,title = "SSB_msy")
+
+# Acceder al data frame
+cumDF <- result$cumDF
+
+# Acceder al gráfico capturado
+plot_capture <- result$plot_capture
+
+```
+
+```{r}
+# Ruta de la carpeta para guardar el plot
+ output_dir <- "C:/Users/Tito/Documents/Tito CDS/MTE/TFM IEO/Case Studies/Imagenes/RICsim"
+ 
+# Combinamos la carpeta con el nombre del archivo
+ output_file <- file.path(output_dir,paste0(params$n_iter,"_",params$cv,"_",params$model_type,"_SSBmsy.png"))
+ 
+ png(output_file, width = 1800, height = 1400, res = 300)
+ print(plot_capture)
+ dev.off()
+```
+
+#### $F_{msy}$
+
+```{r Convergencia en los puntos de referencia Fmsy}
+result<-convergence_plot(dat = f_msy,title = "F_msy")
+
+# Acceder al data frame
+cumDF <- result$cumDF
+
+# Acceder al gráfico capturado
+plot_capture <- result$plot_capture
+
+```
+
+
+```{r}
+# Ruta de la carpeta para guardar el plot
+ output_dir <- "C:/Users/Tito/Documents/Tito CDS/MTE/TFM IEO/Case Studies/Imagenes/RICsim"
+ 
+# Combinamos la carpeta con el nombre del archivo
+ output_file <- file.path(output_dir,paste0(params$n_iter,"_",params$cv,"_",params$model_type,"_Fmsy.png"))
+ 
+ png(output_file, width = 1800, height = 1400, res = 300)
+ print(plot_capture)
+ dev.off()
+```
+
+#### $F_{crash}$
+
+```{r Convergencia en los puntos de referencia Fcrash}
+result<-convergence_plot(dat = Fcrash,title = "Fcrash")
+
+# Acceder al data frame
+cumDF <- result$cumDF
+
+# Acceder al gráfico capturado
+plot_capture <- result$plot_capture
+
+```
+
+
+```{r}
+# Ruta de la carpeta para guardar el plot
+ output_dir <- "C:/Users/Tito/Documents/Tito CDS/MTE/TFM IEO/Case Studies/Imagenes/RICsim"
+ 
+# Combinamos la carpeta con el nombre del archivo
+ output_file <- file.path(output_dir,paste0(params$n_iter,"_",params$cv,"_",params$model_type,"_Fcrash.png"))
+ 
+ png(output_file, width = 1800, height = 1400, res = 300)
+ print(plot_capture)
+ dev.off()
+```
+
+#### $SSB_{virgin}$
+
+```{r Convergencia en los puntos de referencia SSBvirgin}
+result<-convergence_plot(dat = ssb_virgin,title = "SSB_virgin")
+
+# Acceder al data frame
+cumDF <- result$cumDF
+
+# Acceder al gráfico capturado
+plot_capture <- result$plot_capture
+
+```
+
+
+```{r}
+# Ruta de la carpeta para guardar el plot
+ output_dir <- "C:/Users/Tito/Documents/Tito CDS/MTE/TFM IEO/Case Studies/Imagenes/RICsim"
+ 
+# Combinamos la carpeta con el nombre del archivo
+ output_file <- file.path(output_dir, paste0(params$n_iter,"_",params$cv,"_",params$model_type,"_SSBvirgin.png"))
+ 
+ png(output_file, width = 1800, height = 1400, res = 300)
+ print(plot_capture)
+ dev.off()
+```
+
+#### $MSY$
+
+```{r Convergencia en los puntos de referencia MSY}
+result<-convergence_plot(dat = f_msy_yield,title = "MSY")
+
+# Acceder al data frame
+cumDF <- result$cumDF
+
+# Acceder al gráfico capturado
+plot_capture <- result$plot_capture
+```
+
+```{r}
+# Ruta de la carpeta para guardar el plot
+ output_dir <- "C:/Users/Tito/Documents/Tito CDS/MTE/TFM IEO/Case Studies/Imagenes/RICsim"
+ 
+# Combinamos la carpeta con el nombre del archivo
+ output_file <- file.path(output_dir,paste0(params$n_iter,"_",params$cv,"_",params$model_type, "_MSY.png"))
+ 
+ png(output_file, width = 1800, height = 1400, res = 300)
+ print(plot_capture)
+ dev.off()
+```
+```{r lista cvs}
+cv_a <- sd(a)/mean(a)
+cv_b <- sd(b)/mean(b)
+cv_SSB_msy <- sd(ssb_msy)/mean(ssb_msy)
+cv_SSB_virgin <- sd(ssb_virgin)/mean(ssb_virgin)
+cv_Fcrash <- sd(Fcrash)/mean(Fcrash)
+cv_Fmsy <- sd(f_msy)/mean(f_msy)
+cv_MSY  <- sd(f_msy_yield)/mean(f_msy_yield)
+
+list_cvs <- list(cv_a=cv_a,
+               cv_b=cv_b,
+               cv_SSB_msy=cv_SSB_msy,
+               cv_SSB_virgin=cv_SSB_virgin,
+               cv_Fcrash=cv_Fcrash,
+               cv_Fmsy=cv_Fmsy,
+               cv_MSY=cv_MSY)
+
+paste0(params$n_iter,"_",params$cv,"_",params$model_type," ", names(list_cvs)," = ",list_cvs) 
+```
+
+
+
+```{r SAVE RData}
+lista_params<-list(a=a,b=b,SSB_msy=ssb_msy,SSB_virgin=ssb_virgin,Fcrash=Fcrash,Fmsy=f_msy,MSY=f_msy_yield,stk_stf=stk_stf,list_cvs)
+save(lista_params,file = paste0(params$n_iter,"_",params$cv,"_",params$model_type," Variables_RIC_1982.RData"))
+```
